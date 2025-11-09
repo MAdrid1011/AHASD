@@ -130,71 +130,55 @@ def run_simulation(config, output_dir, verbose=False):
     import subprocess
     import time
     
-    # Find ONNXim binary
-    onnxim_path = os.path.join(os.path.dirname(__file__), '..', 'ONNXim', 'build', 'bin', 'Simulator')
-    if not os.path.exists(onnxim_path):
-        print(f"    Warning: ONNXim binary not found at {onnxim_path}")
-        print(f"    Using approximated results based on analytical model...")
-        # Use analytical model for results estimation
-        use_analytical = True
-    else:
-        use_analytical = False
+    # Execute real cycle-accurate simulation using ONNXim + PIMSimulator
+    onnxim_root = os.path.join(os.path.dirname(__file__), '..', 'ONNXim')
+    onnxim_binary = os.path.join(onnxim_root, 'build', 'bin', 'Simulator')
     
-    if not use_analytical:
-        print("    Progress: Running ONNXim + PIMSimulator...", flush=True)
-        # Real simulation would be called here
-        # For now, use analytical model
-        use_analytical = True
+    # Verify simulators exist
+    if not os.path.exists(onnxim_binary):
+        print(f"    ERROR: ONNXim simulator not found at {onnxim_binary}")
+        print(f"    Please build ONNXim first: cd ONNXim && mkdir build && cd build && cmake .. && make")
+        sys.exit(1)
     
-    # Generate results (analytical model or real simulation results)
-    import random
-    random.seed(hash(config['experiment_name']) % 2**32)
-    
-    # Analytical model based on paper equations
-    base_throughput = 10.2  # tokens/sec baseline
-    edc_speedup = 1.15 if config['ahasd']['enable_edc'] else 1.0
-    tvc_speedup = 1.12 if config['ahasd']['enable_tvc'] else 1.0
-    aau_speedup = 1.18 if config['ahasd']['enable_aau'] else 1.0
-    async_speedup = 2.2  # task-level async benefit
-    
-    total_speedup = async_speedup * edc_speedup * tvc_speedup * aau_speedup
-    throughput = base_throughput * total_speedup * (0.95 + random.random() * 0.1)
-    
-    # Calculate metrics
-    total_tokens = config['simulation']['generation_length']
-    total_cycles = int(total_tokens / throughput * 1e6)
-    energy_per_token = 5.2 / total_speedup  # mJ per token
-    
-    results = {
-        "status": "completed",
-        "configuration": config['experiment_name'],
-        "simulation_type": "analytical_model" if use_analytical else "cycle_accurate",
-        "metrics": {
-            "total_cycles": total_cycles,
-            "throughput_tokens_per_sec": round(throughput, 2),
-            "energy_mj": round(energy_per_token * total_tokens, 1),
-            "energy_efficiency_tokens_per_mj": round(1.0 / energy_per_token, 3),
-            "drafts_generated": int(total_tokens * 0.65),
-            "drafts_accepted": int(total_tokens * 0.65 * 0.74),
-            "acceptance_rate": round(0.74 + random.random() * 0.05, 3),
-            "average_draft_length": round(4.5 + random.random() * 1.5, 2),
-            "average_entropy": round(2.2 + random.random() * 0.4, 2)
-        }
+    # Create model list for ONNXim
+    model_list = {
+        "models": [
+            {"name": config['model']['draft'], "type": "draft", "request_time": 0},
+            {"name": config['model']['target'], "type": "target", "request_time": 0}
+        ]
     }
+    model_list_file = os.path.join(output_dir, 'models_list.json')
+    with open(model_list_file, 'w') as f:
+        json.dump(model_list, f, indent=2)
     
-    if config['ahasd']['enable_edc']:
-        results['edc_stats'] = {
-            "prediction_accuracy": round(0.80 + random.random() * 0.05, 3),
-            "suppression_rate": round(0.14 + random.random() * 0.04, 3)
-        }
+    # Run cycle-accurate simulation
+    print("    Executing cycle-accurate simulation (ONNXim + PIMSimulator)...")
+    cmd = [
+        onnxim_binary,
+        '--config', config_file,
+        '--models_list', model_list_file,
+        '--mode', 'language',
+        '--log_level', 'info'
+    ]
     
-    if config['ahasd']['enable_tvc']:
-        preverify_count = int(total_tokens * 0.12)
-        results['tvc_stats'] = {
-            "preverifications_inserted": preverify_count,
-            "prevented_npu_idles": int(preverify_count * 0.91),
-            "success_rate": round(0.88 + random.random() * 0.05, 3)
-        }
+    sim_log = os.path.join(output_dir, 'simulation.log')
+    try:
+        with open(sim_log, 'w') as log_file:
+            result = subprocess.run(cmd, stdout=log_file, stderr=subprocess.STDOUT, 
+                                  timeout=3600, check=True)
+        
+        # Parse real simulation results from log
+        results = parse_simulation_log(sim_log, config)
+        results['simulation_type'] = 'cycle_accurate'
+        results['simulator'] = 'ONNXim+PIMSimulator'
+        
+    except subprocess.TimeoutExpired:
+        print(f"    ERROR: Simulation timeout after 1 hour")
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"    ERROR: Simulation failed with return code {e.returncode}")
+        print(f"    Check log file: {sim_log}")
+        sys.exit(1)
     
     # Save results
     results_file = os.path.join(output_dir, 'results.json')
@@ -205,9 +189,10 @@ def run_simulation(config, output_dir, verbose=False):
     metrics_file = os.path.join(output_dir, 'metrics.txt')
     with open(metrics_file, 'w') as f:
         f.write("=== AHASD Simulation Results ===\n")
-        f.write(f"Configuration: {config['experiment_name']}\n\n")
+        f.write(f"Configuration: {config['experiment_name']}\n")
+        f.write(f"Simulation Type: {results.get('simulation_type', 'unknown')}\n\n")
         f.write("Performance Metrics:\n")
-        for key, value in results['metrics'].items():
+        for key, value in results.get('metrics', {}).items():
             f.write(f"- {key.replace('_', ' ').title()}: {value}\n")
         
         if 'edc_stats' in results:
@@ -224,6 +209,74 @@ def run_simulation(config, output_dir, verbose=False):
     print(f"  Results saved to: {output_dir}")
     
     return 0
+
+def parse_simulation_log(log_file, config):
+    """Parse actual simulation results from ONNXim+PIMSimulator log."""
+    import re
+    
+    results = {
+        "status": "completed",
+        "configuration": config['experiment_name'],
+        "metrics": {}
+    }
+    
+    try:
+        with open(log_file, 'r') as f:
+            content = f.read()
+            
+            # Parse throughput and cycles
+            if match := re.search(r'Total Simulation Cycles:\s*(\d+)', content):
+                results['metrics']['total_cycles'] = int(match.group(1))
+            
+            if match := re.search(r'Throughput:\s*([\d.]+)\s*tokens/sec', content):
+                results['metrics']['throughput_tokens_per_sec'] = float(match.group(1))
+            
+            # Parse energy metrics
+            if match := re.search(r'Total Energy:\s*([\d.]+)\s*mJ', content):
+                results['metrics']['energy_mj'] = float(match.group(1))
+            
+            if match := re.search(r'Energy Efficiency:\s*([\d.]+)\s*tokens/mJ', content):
+                results['metrics']['energy_efficiency_tokens_per_mj'] = float(match.group(1))
+            
+            # Parse draft statistics
+            if match := re.search(r'Total Drafts Generated:\s*(\d+)', content):
+                results['metrics']['drafts_generated'] = int(match.group(1))
+            
+            if match := re.search(r'Total Drafts Accepted:\s*(\d+)', content):
+                results['metrics']['drafts_accepted'] = int(match.group(1))
+            
+            if match := re.search(r'Acceptance Rate:\s*([\d.]+)', content):
+                results['metrics']['acceptance_rate'] = float(match.group(1))
+            
+            if match := re.search(r'Average Draft Length:\s*([\d.]+)', content):
+                results['metrics']['average_draft_length'] = float(match.group(1))
+            
+            if match := re.search(r'Average Draft Entropy:\s*([\d.]+)', content):
+                results['metrics']['average_entropy'] = float(match.group(1))
+            
+            # Parse EDC statistics if enabled
+            if config['ahasd']['enable_edc'] and 'EDC Statistics' in content:
+                results['edc_stats'] = {}
+                if match := re.search(r'EDC.*Accuracy:\s*([\d.]+)%', content):
+                    results['edc_stats']['prediction_accuracy'] = float(match.group(1)) / 100.0
+                if match := re.search(r'Suppressed:.*\(([\d.]+)%\)', content):
+                    results['edc_stats']['suppression_rate'] = float(match.group(1)) / 100.0
+            
+            # Parse TVC statistics if enabled
+            if config['ahasd']['enable_tvc'] and 'TVC Statistics' in content:
+                results['tvc_stats'] = {}
+                if match := re.search(r'Pre-verifications Inserted:\s*(\d+)', content):
+                    results['tvc_stats']['preverifications_inserted'] = int(match.group(1))
+                if match := re.search(r'Prevented NPU Idles:\s*(\d+)', content):
+                    results['tvc_stats']['prevented_npu_idles'] = int(match.group(1))
+                if match := re.search(r'TVC.*Success.*:\s*(\d+).*\(([\d.]+)%\)', content):
+                    results['tvc_stats']['success_rate'] = float(match.group(2)) / 100.0
+    
+    except Exception as e:
+        print(f"    Warning: Error parsing simulation log: {e}")
+        results['status'] = 'parse_error'
+    
+    return results
 
 def main():
     args = parse_args()
