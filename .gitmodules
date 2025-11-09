@@ -1,0 +1,9 @@
+[submodule "ONNXim"]
+	path = ONNXim
+	url = https://github.com/MaZirui2001/ONNXim.git
+[submodule "PIMSimulator"]
+	path = PIMSimulator
+	url = https://github.com/MaZirui2001/PIMSimulator.git
+[submodule "XiangShan"]
+	path = XiangShan
+	url = https://github.com/MaZirui2001/XiangShan.git

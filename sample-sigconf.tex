@@ -1,0 +1,646 @@
+%%
+%% This is file `sample-sigconf.tex',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% samples.dtx  (with options: `all,proceedings,bibtex,sigconf')
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% For the copyright see the source file.
+%% 
+%% Any modified versions of this file must be renamed
+%% with new filenames distinct from sample-sigconf.tex.
+%% 
+%% For distribution of the original source see the terms
+%% for copying and modification in the file samples.dtx.
+%% 
+%% This generated file may be distributed as long as the
+%% original source files, as listed above, are part of the
+%% same distribution. (The sources need not necessarily be
+%% in the same archive or directory.)
+%%
+%%
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro \citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+%%
+%% The first command in your LaTeX source must be the \documentclass
+%% command.
+%%
+%% For submission and review of your manuscript please change the
+%% command to \documentclass[manuscript, screen, review]{acmart}.
+%%
+%% When submitting camera ready or to TAPS, please change the command
+%% to \documentclass[sigconf]{acmart} or whichever template is required
+%% for your publication.
+%%
+%%
+\documentclass[sigconf]{acmart}
+\usepackage{subcaption}
+
+%% 去掉ACM Reference Format和版权许可信息
+\settopmatter{printacmref=false, printfolios=true}
+\setcopyright{none}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+%%
+%% \BibTeX command to typeset BibTeX logo in the docs
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+%% Rights management information.  This information is sent to you
+%% when you complete the rights form.  These commands have SAMPLE
+%% values in them; it is your responsibility as an author to replace
+%% the commands and values with those provided to you when you
+%% complete the rights form.
+%%\setcopyright{acmlicensed}
+%%\copyrightyear{2018}
+%%\acmYear{2018}
+%%\acmDOI{XXXXXXX.XXXXXXX}
+%% These commands are for a PROCEEDINGS abstract or paper.
+%%\acmConference[Conference acronym 'XX]{Make sure to enter the correct
+%%  conference title from your rights confirmation email}{June 03--05,
+%%  2018}{Woodstock, NY}
+%%
+%%  Uncomment \acmBooktitle if the title of the proceedings is different
+%%  from ``Proceedings of ...''!
+%%
+%%\acmBooktitle{Woodstock '18: ACM Symposium on Neural Gaze Detection,
+%%  June 03--05, 2018, Woodstock, NY}
+%%\acmISBN{978-1-4503-XXXX-X/2018/06}
+
+
+%%
+%% Submission ID.
+%% Use this when submitting an article to a sponsored event. You'll
+%% receive a unique submission ID from the organizers
+%% of the event, and this ID should be used as the parameter to this command.
+%%\acmSubmissionID{123-A56-BU3}
+
+%%
+%% For managing citations, it is recommended to use bibliography
+%% files in BibTeX format.
+%%
+%% You can then either use BibTeX with the ACM-Reference-Format style,
+%% or BibLaTeX with the acmnumeric or acmauthoryear sytles, that include
+%% support for advanced citation of software artefact from the
+%% biblatex-software package, also separately available on CTAN.
+%%
+%% Look at the sample-*-biblatex.tex files for templates showcasing
+%% the biblatex styles.
+%%
+
+%%
+%% The majority of ACM publications use numbered citations and
+%% references.  The command \citestyle{authoryear} switches to the
+%% "author year" style.
+%%
+%% If you are preparing content for an event
+%% sponsored by ACM SIGGRAPH, you must use the "author year" style of
+%% citations and references.
+%% Uncommenting
+%% the next command will enable that style.
+%%\citestyle{acmauthoryear}
+
+
+%%
+%% end of the preamble, start of the body of the document source.
+\begin{document}
+
+%%
+%% The "title" command has an optional parameter,
+%% allowing the author to define a "short title" to be used in page headers.
+\title{AHASD: Asynchronous Heterogeneous Architecture for LLM Speculative Decoding on Mobile Devices}
+
+%%
+%% The "author" command and its associated commands are used to define
+%% the authors and their affiliations.
+%% Of note is the shared affiliation of the first two authors, and the
+%% "authornote" and "authornotemark" commands
+%% used to denote shared contribution to the research.
+% \author{Ben Trovato}
+% \authornote{Both authors contributed equally to this research.}
+% \email{trovato@corporation.com}
+% \orcid{1234-5678-9012}
+% \author{G.K.M. Tobin}
+% \authornotemark[1]
+% \email{webmaster@marysville-ohio.com}
+% \affiliation{%
+%   \institution{Institute for Clarity in Documentation}
+%   \city{Dublin}
+%   \state{Ohio}
+%   \country{USA}
+% }
+
+% \author{Lars Th{\o}rv{\"a}ld}
+% \affiliation{%
+%   \institution{The Th{\o}rv{\"a}ld Group}
+%   \city{Hekla}
+%   \country{Iceland}}
+% \email{larst@affiliation.org}
+
+% \author{Valerie B\'eranger}
+% \affiliation{%
+%   \institution{Inria Paris-Rocquencourt}
+%   \city{Rocquencourt}
+%   \country{France}
+% }
+
+% \author{Aparna Patel}
+% \affiliation{%
+%  \institution{Rajiv Gandhi University}
+%  \city{Doimukh}
+%  \state{Arunachal Pradesh}
+%  \country{India}}
+
+% \author{Huifen Chan}
+% \affiliation{%
+%   \institution{Tsinghua University}
+%   \city{Haidian Qu}
+%   \state{Beijing Shi}
+%   \country{China}}
+
+% \author{Charles Palmer}
+% \affiliation{%
+%   \institution{Palmer Research Laboratories}
+%   \city{San Antonio}
+%   \state{Texas}
+%   \country{USA}}
+% \email{cpalmer@prl.com}
+
+% \author{John Smith}
+% \affiliation{%
+%   \institution{The Th{\o}rv{\"a}ld Group}
+%   \city{Hekla}
+%   \country{Iceland}}
+% \email{jsmith@affiliation.org}
+
+% \author{Julius P. Kumquat}
+% \affiliation{%
+%   \institution{The Kumquat Consortium}
+%   \city{New York}
+%   \country{USA}}
+% \email{jpkumquat@consortium.net}
+
+%%
+%% By default, the full list of authors will be used in the page
+%% headers. Often, this list is too long, and will overlap
+%% other information printed in the page headers. This command allows
+%% the author to define a more concise list
+%% of authors' names for this purpose.
+% \renewcommand{\shortauthors}{Zirui Ma et al.}
+
+%%
+%% The abstract is a short summary of the work to be presented in the
+%% article.
+\begin{abstract}
+
+Speculative decoding enhances the inference efficiency of large language model (LLMs) by generating drafts using a small draft language model (DLM) and verifying them in batches with a large target language model (TLM). However, adaptive drafting inference on a mobile single-NPU-PIM system faces idle overhead in traditional operator-level synchronous execution and wasted computation in asynchronous execution due to fluctuations in draft length. This paper introduces AHASD, a task-level asynchronous mobile NPU-PIM heterogeneous architecture for speculative decoding. AHASD achieves parallel drafting on the PIM and verification on a single NPU through task-level DLM-TLM decoupling. It incorporates Entropy-History-Aware Drafting Control and Time-Aware Pre-Verification Control to dynamically manage adaptive drafting algorithm execution and pre-verification timing, suppressing invalid drafting based on low-confidence drafts. Additionally, AHASD integrates attention algorithm units and gate switching within LPDDR5-PIM to enable sub-microsecond task switching on the PIM side. Experimental results for different LLMs and adaptive drafting algorithms show that AHASD achieves up to 4.6$\times$ in throughput and 6.1$\times$ in energy efficiency improvements over a GPU-only baseline, and 1.5$\times$ in throughput and 1.24$\times$ in energy efficiency gains over the state-of-the-art GPU+PIM baseline, with hardware overhead below 3\% of the DRAM area.
+
+
+\end{abstract}
+
+%%
+%% The code below is generated by the tool at http://dl.acm.org/ccs.cfm.
+%% Please copy and paste the code instead of the example below.
+%%
+% \begin{CCSXML}
+% <ccs2012>
+%  <concept>
+%   <concept_id>00000000.0000000.0000000</concept_id>
+%   <concept_desc>Do Not Use This Code, Generate the Correct Terms for Your Paper</concept_desc>
+%   <concept_significance>500</concept_significance>
+%  </concept>
+%  <concept>
+%   <concept_id>00000000.00000000.00000000</concept_id>
+%   <concept_desc>Do Not Use This Code, Generate the Correct Terms for Your Paper</concept_desc>
+%   <concept_significance>300</concept_significance>
+%  </concept>
+%  <concept>
+%   <concept_id>00000000.00000000.00000000</concept_id>
+%   <concept_desc>Do Not Use This Code, Generate the Correct Terms for Your Paper</concept_desc>
+%   <concept_significance>100</concept_significance>
+%  </concept>
+%  <concept>
+%   <concept_id>00000000.00000000.00000000</concept_id>
+%   <concept_desc>Do Not Use This Code, Generate the Correct Terms for Your Paper</concept_desc>
+%   <concept_significance>100</concept_significance>
+%  </concept>
+% </ccs2012>
+% \end{CCSXML}
+
+% \ccsdesc[500]{Do Not Use This Code~Generate the Correct Terms for Your Paper}
+% \ccsdesc[300]{Do Not Use This Code~Generate the Correct Terms for Your Paper}
+% \ccsdesc{Do Not Use This Code~Generate the Correct Terms for Your Paper}
+% \ccsdesc[100]{Do Not Use This Code~Generate the Correct Terms for Your Paper}
+
+%%
+%% Keywords. The author(s) should pick words that accurately describe
+%% the work being presented. Separate the keywords with commas.
+\keywords{LLM Inference Acceleration, Heterogeneous Architecture, Speculative Decoding, Adaptive Drafting}
+%% A "teaser" image appears between the author and affiliation
+%% information and the body of the document, and typically spans the
+%% page.
+% \begin{teaserfigure}
+%   \includegraphics[width=\textwidth]{sampleteaser}
+%   \caption{Seattle Mariners at Spring Training, 2010.}
+%   \Description{Enjoying the baseball game from the third-base
+%   seats. Ichiro Suzuki preparing to bat.}
+%   \label{fig:teaser}
+% \end{teaserfigure}
+
+%%\received{20 February 2007}
+%%\received[revised]{12 March 2009}
+%%\received[accepted]{5 June 2009}
+
+%%
+%% This command processes the author and affiliation and title
+%% information and builds the first part of the formatted document.
+\maketitle
+
+\section{Introduction}
+
+Speculative Decoding~\cite{decoding, draftVerify, fastInference, specInfer} offers a novel system and algorithm co-design approach to enhance the inference efficiency of Large Language Models (LLMs) without significantly sacrificing generation quality. The core idea involves a small-scale draft language model (DLM) to generate draft tokens, which are then batch-verified by a large-scale target language model (TLM), thereby reducing costly TLM invocations and improving hardware parallel utilization. For memory-bounded mobile scenarios, a heterogeneous SoC consisting of an NPU and Processing-in-Memory (PIM)~\cite{attacc, maestro} is an ideal platform for implementing speculative decoding: the NPU is suitable for executing the high compute-density calculations, while PIM can efficiently handle the memory-intensive workloads.
+
+To enhance the performance of speculative decoding in heterogeneous systems, existing research explores two primary approaches. \textbf{(i)} Operator-level synchronous partitioning~\cite{neupims,specpim} maps different operators to either the NPU or PIM and executes them in parallel synchronously at the operator granularity under a fixed draft length to balance task load and improve overall throughput; \textbf{(ii)} Task-level asynchronous scheduling~\cite{amusd} attempts to enable DLM and TLM to advance independently at their own pace on different devices, improving system parallelism and computing power utilization. However, both methods have limitations when facing adaptive drafting~\cite{specasr,svip,banditSpec,adaedl,specdec}. Synchronous partitioning assumes a fixed draft length, failing to consider the dynamic fluctuation of draft length at runtime, leading to drastic fluctuations in the load of NPU and PIM, causing mutual waiting. Asynchronous scheduling does not fully consider the matching of DLM and TLM computing characteristics with hardware computing power characteristics, and uncontrolled look-ahead drafting results in a large number of low-acceptance drafts, resulting in a waste of computational power.
+
+
+To address this, we propose AHASD, an asynchronous heterogeneous architecture for mobile single NPU–PIM tailored to LLM speculative decoding. AHASD achieves efficient task-level asynchronous parallelism despite computational power differences between the NPU and PIM and the category of adaptive drafting algorithms. Architecturally, it decouples drafting and verification, enabling these tasks to be executed asynchronously on the PIM and NPU according to their computational characteristics. At the algorithm-hardware co-design level, hardware-level drafting and pre-verification controls provide learnable decision-making for switching between drafting and pre-verification. At the in-memory computing level, AHASD integrates an Attention Algorithm Unit and a Gated Task Scheduling Unit within the LPDDR5-PIM rank, enabling attention link localization and sub-microsecond task switching. The main contributions of this paper are as follows:
+
+\textbf{(i)} We combine mobile heterogeneous systems and task-level asynchronous execution for speculative decoding based on existing adaptive drafting algorithms, mapping computing units according to the different computational characteristics of DLM and TLM, and using asynchronous queue communication and PIM computing function extensions to improve inference performance.
+
+\textbf{(ii)} We design a hardware-oriented fusion of historical draft average entropy and leading depth online learning predictor to dynamically control adaptive drafting algorithm execution to suppress look-ahead drafting based on low-confidence drafts.
+
+\textbf{(iii)} We model based on NPU/PIM bi-directional latency to enable the computing system to adaptively insert small-batch pre-verification, improving PIM effective compute utilization and overall speculative decoding performance.
+
+\textbf{(iv)} We implement and evaluate AHASD end-to-end on a cycle-accurate simulator. Experiments with different LLMs and adaptive drafting algorithms show AHASD achieves up to 4.6$\times$ higher throughput and 6.1$\times$ greater energy efficiency than a GPU-only baseline, and 1.5$\times$ throughput and 1.24$\times$ energy efficiency improvements over the state-of-the-art GPU+PIM baseline.
+
+% \textbf{(iv)} We implement and evaluate AHASD end-to-end on a cycle-accurate simulator. Experimental results for different LLMs and adaptive drafting algorithms show that AHASD achieves up to 4.6$\times$ in throughput and 6.1$\times$ in energy efficiency improvements over a GPU-only baseline, and 1.5$\times$ in throughput and 1.24$\times$ in energy efficiency gains over the state-of-the-art GPU+PIM baseline
+
+\section{Background}
+
+\paragraph{\textbf{Speculative decoding and adaptive drafting algorithms}}
+
+
+
+Large language models often use autoregressive decoding for output generation, relying on the previous token in each step. This makes inference process sequentially dependent, hindering throughput improvement through batch processing. Speculative decoding reduces calls to the TLM by using a smaller DLM to generate multiple candidate drafts in advance. The TLM then verifies the prefix matching degree of these candidate tokens in one forward propagation, as shown in Figure~\ref{fig:SpeculativeDecoding}(a). Early speculative decoding methods~\cite{decoding, draftVerify} used a fixed draft length. However, input context predictability varies with dialogue depth, a fixed draft length can lead to redundant drafting and verification load. Subsequent work~\cite{svip,specdec} introduced adaptive drafting algorithms to adjust the draft length at runtime based on statistical indicators, as shown in Figure~\ref{fig:SpeculativeDecoding}(b). This allows the DLM to pause drafting when confidence decreases, reducing effective computing power waste.
+
+
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-10pt}
+  \includegraphics[width=0.47\textwidth]{fig/SpeculativeDecoding.drawio.pdf}
+  \vspace{-12pt}
+  \caption{Speculative decoding and adaptive drafting.}
+  \Description{Speculative decoding and adaptive drafting.}
+  \label{fig:SpeculativeDecoding}
+  \vspace{-15pt}
+\end{figure}
+
+\paragraph{\textbf{Computational characteristics of the speculative decoding}}
+
+Speculative decoding exhibits different computational characteristics in drafting and verification: the former is memory-intensive, while the latter is compute-intensive. To verify this, we performed a roofline analysis of LlaMA2~\cite{llama2}'s inference on an NVIDIA RTX 5090 (Laptop) GPU, as shown in Figure~\ref{fig:Roofline}. The analysis indicates that: \textbf{(i)} DLM drafting mainly consists of GEMV and small-scale GEMM, with frequent parameter and cache accesses, resulting in low arithmetic intensity and memory-bound behavior; \textbf{(ii)} TLM verification can process multiple tokens in parallel, with a computational structure dominated by large-scale GEMM, resulting in high arithmetic intensity and compute-bound behavior. This difference leads to different characteristics in operator size, bandwidth requirements, and data access patterns between the two stages. Therefore, the memory-efficient and compute-efficient units can be collaboratively exploited to leverage their performance advantages.
+
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-10pt}
+  \includegraphics[width=0.47\textwidth]{fig/Roofline.drawio.pdf}
+  \vspace{-12pt}
+  \caption{Roofline model of speculative decoding.}
+  \Description{Roofline model of speculative decoding.}
+  \label{fig:Roofline}
+  \vspace{-15pt}
+\end{figure}
+
+\paragraph{\textbf{Mobile NPU–PIM heterogeneous system}}
+
+Recent studies have examined deploying speculative decoding on heterogeneous hardware to meet its varying computational demands. In memory-constrained mobile devices, SoCs commonly use NPU-centric compute cores combined with PIM~\cite{facil}. NPUs offer high compute density, suitable for compute-intensive TLM operators like GEMM. PIM, located within the storage medium, provides high internal bandwidth, ideal for memory-intensive DLM operators. Some approaches~\cite{neupims, specpim} divide speculative decoding at the operator level, mapping different operators to distinct compute units. During each drafting and verification, DLM and TLM operators synchronize across devices based on predefined dependencies.
+
+\section{Motivation}
+
+Based on the analysis above, we identify two key system-level challenges associated with running adaptive draft speculative decoding on mobile heterogeneous systems.
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-10pt}
+  \includegraphics[width=0.47\textwidth]{fig/Challenge1.drawio.pdf}
+  \vspace{-15pt}
+  \caption{Overhead inbalance in operator-level schedule.}
+  \Description{Operator-level synchronization causes load imbalance under fluctuating draft lengths.}
+  \label{fig:Challenge1}
+  \vspace{-15pt}
+\end{figure}
+
+\paragraph{\textbf{Challenge 1: Operator-level synchronization causes idle overhead under draft fluctuation on mobile NPU-PIM systems}}
+
+Current mobile NPU-PIM architectures use operator-level synchronous parallel scheduling, mapping DLM and TLM operators to the NPU or PIM to balance execution time, assuming a fixed draft length. Adaptive drafting algorithms, however, introduces algorithm-level runtime fluctuations in draft length. As shown in Figure~\ref{fig:Challenge1}, experiments on Coral-NPU~\cite{coralnpu} combined with LPDDR5-PIM~\cite{lpddr5}, replicating SpecPIM~\cite{specpim} task mapping with LlaMA2-1.3B (DLM) and LlaMA2-7B (TLM) using the AdaEDL~\cite{adaedl} algorithm, show that as draft length causes PIM latency to fluctuate significantly (12.3\% to 84.2\% of total inference latency) due to surging computational load, while the well-provisioned NPU remains idle, causing synchronization overhead. Conversely, shorter drafts make the NPU the bottleneck, causing both devices to frequently idle waiting for each other's results.
+
+\paragraph{\textbf{Opportunity 1: Performance optimization potential of task-level asynchronous scheduling}}
+
+To address algorithm-level workload imbalances caused by draft fluctuations, scheduling must overcome operator-level synchronization constraints. Task-level asynchronous scheduling relaxes cross-device dependencies, enabling drafting and verification tasks to proceed independently, thus decoupling PIM-side drafting from NPU-side verification. Research shows that DLM can generate candidate tokens without verification feedback~\cite{pearl, amusd}, supporting this asynchronous approach. Although operators within each task execute sequentially, overall system parallelism improves, reducing synchronization overhead from adaptive drafting.
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-10pt}
+  \includegraphics[width=0.47\textwidth]{fig/Challenge2.drawio.pdf}
+  \vspace{-12pt}
+  \caption{The acceptable ratio of look-ahead drafting.}
+  \Description{The Low Acceptable Ratio of Look-ahead Drafting}
+  \label{fig:Challenge2}
+  \vspace{-15pt}
+\end{figure}
+
+\paragraph{\textbf{Challenge 2: Acceptance rate degradation of look-ahead drafting leads to effective computing power waste}}
+
+Although decoupling the DLM and TLM in task-level asynchronous scheduling can enhance system parallelism, it also introduces dynamic load drift between the NPU and PIM. In strongly context-constrained stages, the adaptive algorithm tends to generate longer drafts. While the single-batch computation time of the DLM is extended, the TLM can continuously consume the unverified token queue to perform verification in parallel, resulting in minimal impact on overall performance. In weakly context-constrained stages, the draft length is significantly reduced, shortening the DLM’s single-batch computation time, while the TLM load remains nearly constant. To maintain device utilization, the DLM continues drafting based on unverified tokens; however, the acceptance rate of drafts generated under weak context constraints is naturally low, causing multiple draft batches to be rejected by the TLM. Empirical measurements show that in mobile scenarios, when LlaMA2-1.3B (DLM) and LlaMA2-7B (TLM) are deployed on the Coral-NPU + LPDDR5-PIM platform, as shown in Figure~\ref{fig:Challenge2}, a decrease in the single-batch quantity of adaptive drafts leads to a surge in the number of unverified draft batches between adjacent verification cycles, resulting in an insufficient number of accepted tokens. Further drafting by the DLM based on low-confidence drafts causes significant waste of effective computing power on the PIM side.
+
+\paragraph{\textbf{Opportunity 2: Potential gains from PIM-side small-batch pre-verification}}
+
+As shown in Figure~\ref{fig:Challenge2}, when the adaptive draft is short, small-batch pre-verification of the earliest unverified tokens in look-ahead drafts more accurately reflects the overall acceptance trend. This low-intensity pre-verification can be efficiently executed on PIM using GEMV. Thus, TLM can be triggered by the PIM to perform small-batch pre-verification on unverified tokens, enabling timely error correction and preventing invalid look-ahead drafting around low-confidence drafts. However, if the pre-verification delay exceeds the verification cycle currently executed by the NPU, it may lead to draft exhaustion, causing the NPU to idle. To address this, the system must establish execution time modeling across computing units, perform online estimation of the runtime distribution of DLM and TLM on PIM and NPU, and accordingly determine the timing of the switch between drafting and pre-verification, as well as the pre-verification length on the PIM side.
+
+\section{AHASD Design}
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-10pt}
+  \includegraphics[width=0.47\textwidth]{fig/Design.drawio.pdf}
+  \vspace{-10pt}
+  \caption{The architecture design of AHASD.}
+  \Description{The system architecture of AHASD.}
+  \label{fig:Design}
+  \vspace{-12pt}
+\end{figure}
+
+We propose AHASD, a mobile NPU-PIM heterogeneous architecture for LLM speculative decoding. AHASD incorporates three key mechanisms: \textbf{(i)} Task-Level Asynchronous Heterogeneous Execution Framework — addressing Challenge 1, AHASD maps computing units according to the distinct computational characteristics of DLM and TLM. When the draft length fluctuates dynamically during adaptive decoding, each device progresses at its own pace, avoiding mutual waiting and idling that occur under conventional operator-level synchronization. \textbf{(ii)} Entropy-History-Aware Drafting Control — targeting the core issue of Challenge 2, AHASD combines historical prediction entropy with the number of leading draft batches (relative to verification) to perform hardware-level online learning. It then evaluates the acceptance potential of drafts and effectively suppresses further look-ahead drafting of low-acceptance ones. \textbf{(iii)} Time-Aware Pre-Verification Control — also addressing Challenge 2, AHASD builds on EDC by combining runtime latency modeling of both NPU and PIM to insert small-batch pre-verification tasks on the PIM side without causing NPU idling, thereby improving effective computational utilization.
+
+Figure~\ref{fig:Design} shows the AHASD system architecture, integrating a mobile NPU with LPDDR5-PIM memory, while the CPU handles task scheduling and control. The CPU and NPU communicate with the LPDDR5 module via a high-speed data bus. For algorithm data flow, asynchronous queues enable decoupled cross-device data transfer and task-level parallelism, allowing asynchronous execution of DLM and TLM. The NPU, resembling a mobile SoC, comprises a systolic array, vector unit, and on-chip SPM. The LPDDR5-PIM module features multiple memory channels supporting in-memory computing to maximize limited edge device bandwidth.
+
+\subsection{AHASD Task-Level Asynchronous Heterogeneous Execution Framework}
+
+To address the inherent workload imbalance in computational power demands during draft generation and verification, AHASD architecturally maps the memory-intensive DLM to PIM and the compute-intensive TLM to NPU, enabling task-level asynchronous collaboration. To achieve this decoupling, AHASD employs three cross-device asynchronous queues: \textbf{(i)} An unverified draft queue that stores token batches generated by PIM and awaiting NPU verification; \textbf{(ii)} A feedback queue that stores TLM verification results to guide PIM in draft confirmation or rollback; \textbf{(iii)} A pre-verification queue maintained by the CPU scheduling module to mark drafts requiring pre-verification within PIM. These queues bridge the cross-device task flow, enabling asynchronous data exchange between DLM and TLM while maintaining result consistency.
+
+Regarding in-memory computing support, AHASD integrates an Attention Algorithm Unit (AAU) within each LPDDR5-PIM rank. The AAU executes nonlinear operators such as GELU, Softmax, and LayerNorm, as well as reduction operations like attention-score accumulation, directly on the in-memory data path. This in-situ processing eliminates the need to transfer intermediate activations to the NPU, effectively reducing cross-chip communication overhead.
+
+Upon detecting pre-verification, the Gated Task Scheduling Unit selectively enables the rank with verification parameters while disabling the drafting ranks. By leveraging lightweight rank-level gating within the same PIM array, it achieves sub-microsecond switching, allowing the PIM to perform pre-verification promptly without wasting computational resources.
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-10pt}
+  \includegraphics[width=0.35\textwidth]{fig/EDC.drawio.pdf}
+  \vspace{-15pt}
+  \caption{Entropy-History-Aware Drafting Control module.}
+  \Description{Entropy-History-Aware Drafting Control Module.}
+  \label{fig:edc}
+  \vspace{-15pt}
+\end{figure}
+
+\subsection{Entropy-History-Aware Drafting Control}
+
+AHASD proposes the Entropy-History-Aware Drafting Control (EDC) module. Based on the current DLM's inference confidence, EDC determines whether to continue look-ahead drafting by considering the model's inference state, thereby enhancing the effective computational throughput of the PIM.
+
+Figure~\ref{fig:edc} illustrates the EDC module along with a simple example. After each batch of drafting is completed, AHASD's PIM calculates the average predicted entropy value $\overline{H}$ of the batch of tokens and maps it to one of eight equally spaced discrete intervals within the range $[0, H_{\max}]$, where $H_{\max}$ is statically preset by the statistical maximum predicted entropy observed during large model inference. The CPU writes the mapped bucket number to the Local Entropy History Table (LCHT) inside the EDC and increments the 3-bit Leading Length Register (LLR), which records the number of unverified draft batches currently leading the verification. To capture dynamic changes in drafting, the EDC divides the LCHT into two groups ($H_{0-3}, H_{4-7}$), calculates the average entropy within each group, and concatenates these averages to form the historical entropy feature $\{\overline{H_{4-7}}, \overline{H_{0-3}}\}$. Subsequently, the LLR is appended as the low bit to form the 9-bit input index for the Pattern History Table (PHT):
+\[
+Input_{PHT} = \{\overline{H_{4-7}},\ \overline{H_{0-3}},\ LLR\}
+\]
+
+By jointly indexing these factors, the PHT can capture the evolving correlation between entropy fluctuations and draft acceptance. When the highest bit of the pattern output by the PHT is 1, it indicates that the batch of drafts is judged to have a high acceptance potential based on the model's dynamic state and is worth continuing to generate in advance.
+
+After the NPU completes verification, the CPU immediately updates the state of the EDC by reducing the LLR count and using the average entropy calculation unit for the accepted batches to write the average entropy to the Local Commit Entropy History Table (LCEHT). The LCEHT stores valid historical samples verified by the TLM. If a draft batch is rejected, the CPU rolls back the LCEHT content to the LEHT. The update of the PHT depends solely on the LCHR and the current verification result: if the draft is fully accepted, the corresponding item counter is incremented; otherwise, it is decremented. This process gradually learns whether the entropy pattern of the current draft will be verified by the TLM.
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-15pt}
+  \includegraphics[width=0.35\textwidth]{fig/TVC.drawio.pdf}
+  \vspace{-12pt}
+  \caption{Time-Aware Pre-Verification Control module.}
+  \Description{The Time-Aware Verify Control Module.}
+  \label{fig:tvc}
+  \vspace{-15pt}
+\end{figure}
+
+\subsection{Time-Aware Pre-Verification Control}
+
+After EDC suggests whether to continue speculative drafting from a model inference perspective, the system must decide whether to initiate small-batch pre-verification on the PIM side without introducing synchronization overhead between the NPU and PIM. To achieve this, AHASD employs the Time-Aware Pre-Verification Control (TVC) module, which implements runtime two-sided latency modeling, as shown in Figure~\ref{fig:tvc}(a). For the NPU, execution latency is primarily constrained by parameter transfer overhead. The additional KV cache transfer caused by generated tokens directly affects its execution time. Therefore, TVC predicts the number of execution cycles for the NPU's current (i-th) task as:
+\[
+C_{NPU_i}=\frac14\sum_{j=0}^3(\frac {C_{NPU}}{L_{KV}})_{j}\times L_{KV_i}
+\]
+where, $(\frac{C_{NPU}}{L_{KV}})_j$ is the ratio of the equivalent number of NPU execution cycles—converted to the PIM side according to the frequency ratio of PIM and NPU—recorded by the NPU-side Verification Cycle Table (NVCT) to the KV cache length involved in the inference, and $L_{KV_i}$ is the KV cache length used in this inference.
+
+Since PIM is computation-limited, task delay is nearly linearly related to batch processing length. Thus, our DLM time prediction model mirrors that used for the NPU. The delays for drafting and pre-verification are as follows:
+\[
+C_{PIM-Draft_i} =\frac14\sum_{j=0}^3(\frac {C_{PIM-DLM}}{L_{Draft}})_j\times L_{Draft_{i}}
+\]\[
+C_{PIM-Verify_i} =\frac14\sum_{j=0}^3(\frac {C_{PIM-TLM}}{L_{Draft}})_j\times L_{Draft_{i}}
+\]
+where, $(\frac{C_{PIM-DLM}}{L_{Draft}})_j$ and $(\frac{C{PIM-TLM}}{L_{Draft}})_j$ are the ratios of the number of execution cycles for DLM and TLM inference, respectively, as recorded by the PIM-side Drafting Cycle Table (PDCT) and the Pre-Verification Cycle Table (PVCT), to the length of the inference draft. Here $L_{Draft_i}$ is the length of the draft processed in this inference.
+
+When the EDC deems further draft generation unbeneficial, the TVC adopts a conservative approach to decide on inserting a pre-verification on the PIM side. Specifically, before completing the current NPU verification, the PIM must (i) complete the pre-verification of several drafts and (ii) generate at least one new draft if the verification result is potentially unacceptable. This ensures the NPU has new drafts available for the next verification cycle. Thus, the remaining cycles available for PIM pre-verification is:
+\[
+C_{PIM-Left} = C_{NPU_i}-(C_{now} + C_{PIM-Draft_1})
+\]
+where, $C_{now}$ is the equivalent number of cycles that the current verification of the NPU has executed, as recorded by the NPU Current Execution Cycle Register (NCR). By combining this with the cycle evaluation from the pre-verification on the PIM side, the length of drafts eligible for pre-verification can be calculated. If the calculated draft length is less than 1, the TVC determines that no pre-verification should be inserted and continues generating drafts. Otherwise, pre-verification will be inserted. The modified calculation flow is illustrated in Figure~\ref{fig:tvc}(b).
+
+\section{Methodology}
+
+\paragraph{\textbf{Baseline}}
+
+We compare AHASD with two baselines: (i) GPU-Only, where drafting and verification are performed alternately and sequentially on the GPU; and \textbf{(ii) SpecPIM}~\cite{specpim}, a speculative decoding operator-level parallel acceleration scheme based on a GPU+PIM hybrid. We reconstruct the PIM component using the simulation methodology described in the SpecPIM paper, based on the Samsung HBM-PIM design~\cite{hbmpim} and SK-Hynix's GDDR-PIM design~\cite{gddr6}, and employ two GPUs to build its Host. The GPUs used in the baselines are NVIDIA GeForce RTX 5090 (Laptop).
+
+\paragraph{\textbf{Benchmark}}
+As shown in Table~\ref{tab:benchmark}, we select three benchmark tests with different model configurations (OPT~\cite{opt}, LlaMA2~\cite{llama2}, PaLM~\cite{palm}) to evaluate the performance of AHASD. All models are quantized using the INT8 data type, and various rank sizes are allocated in LPDDR5 for storage according to their respective sizes. We also employ four different adaptive draft algorithms: SpecDec++~\cite{specdec}, SVIP~\cite{svip}, AdaEDL~\cite{adaedl}, and BanditSpec~\cite{banditSpec} to perform adaptive drafting for each large model combination. For each benchmark test, we set the generation length to 1024 and the batch size to 1 to simulate the small batch size typical of mobile terminals.
+
+\paragraph{\textbf{Experiment Platform}}
+
+Using two clock-accurate open-source simulators, ONNXim~\cite{onnxim} and SAITPublic-PIMSimulator~\cite{pimSimulator}, we simulate mobile NPUs and PIM, respectively, with performance metrics shown in Table~\ref{tab:platform}. We modify ONNXim's memory interface and added code for three asynchronous queues to enable communication between the simulators. Furthermore, we integrate the EDC and TVC modules into the Xiangshan~\cite{xiangshan} open-source CPU-based SoC to implement dynamic scheduling of AHASD's PIM-side tasks.
+
+\section{Experiment Result}
+
+\subsection{Ablation Experiment}
+
+\begin{table}[!htbp]
+  \centering
+  \vspace{-10pt}
+  \caption{Benchmark Model Configurations}
+  \vspace{-10pt}
+  \resizebox{0.47\textwidth}{!}{
+  \begin{tabular}{lcccc}
+  \toprule
+  \textbf{Scale} & \multicolumn{2}{c}{\textbf{Draft Model}} & \multicolumn{2}{c}{\textbf{Target Model}} \\ 
+  \cmidrule(r){2-3} \cmidrule(r){4-5}
+  & \textbf{Name} & \textbf{Hidden Size} & \textbf{Name} & \textbf{Hidden Size} \\
+  \midrule
+  Small  & OPT-1.3B      & 2048  & OPT-6.7B      & 4096  \\
+  Medium & LlaMA2-7B     & 4096  & LlaMA2-13B    & 5120  \\
+  Large  & PaLM-8B       & 4096  & PaLM-62B      & 8192  \\
+  \bottomrule
+  \end{tabular}
+  }
+  \label{tab:benchmark}
+  \vspace{-15pt}
+\end{table}
+
+\begin{table}[htbp!]
+  \centering
+  \vspace{-10pt}
+  \caption{Hardware Configuration of Experimental Platform}
+  \vspace{-10pt}
+  \resizebox{0.47\textwidth}{!}{
+  \renewcommand{\arraystretch}{1.25}
+  \begin{tabular}{|c|c|c|c|} 
+  \hline
+  \multicolumn{2}{|c|}{\textbf{Mobile NPU Configuration}} & \multicolumn{2}{c|}{\textbf{PIM (LPDDR5) Configuration}} \\ \hline
+  
+  Matrix compute unit & 16 TFLOPS & Number of PIM units & 16 \\ \hline
+  Vector compute unit & 8.2 TFLOPS & PIM performance (INT8) & 102.4 GOPS \\ \hline
+  Number of compute chips & 2 & Rank capacity & 4 GB \\ \hline
+  Operating frequency & 1 GHz & On-chip bandwidth & 256 GB/s  \\ \hline
+  Scrachpad Capacity& 8MB & Off-chip bandwidth & 51.2 GB/s\\ \hline
+  
+  \multicolumn{4}{|c|}{\textbf{PIM (LPDDR5) Timing Parameters}} \\ \hline
+  \multicolumn{4}{|c|}{
+  $t_{RP}=32,\;
+  t_{RCD}=32,\;
+  t_{RAS}=64,\;
+  t_{RRD_L}=8,\;
+  t_{WR}=24,$
+  } \\
+  
+  \multicolumn{4}{|c|}{
+  $t_{CCD_S}=4,\;
+  t_{CCD_L}=6,\;
+  t_{REFI}=6240,\;
+  t_{FAW}=64,\;
+  t_{RFC}=560$
+  } \\ \hline
+  
+  \end{tabular}
+  } % end of resizebox
+  \label{tab:platform}
+  \vspace{-15pt}
+  \end{table}
+
+
+
+\begin{figure*}[htbp]
+  \centering
+  \vspace{-15pt}
+  \includegraphics[width=0.9\textwidth]{fig/AblationExperiment.drawio.pdf}
+  \vspace{-12pt}
+  \caption{Ablation Experiment of AHASD}
+  \Description{Ablation Experiment of AHASD}
+  \label{fig:ablation}
+  \vspace{-10pt}
+\end{figure*}
+
+
+
+\paragraph{\textbf{Throughput and Average Draft Acceptance Rate}}
+
+To facilitate comparison, we normalize the throughput of the GPU-only configuration to 1. As shown in Figure~\ref{fig:ablation}(a), with NPU+PIM task-level asynchronous scheduling, although the average acceptance rate decreases by 25.1\% due to drafting based on unverified tokens, the overall throughput still increases to an average of 2.2$\times$ because the DLM can generate drafts asynchronously and independently of the TLM. After adding the AAU on the PIM side, non-linear operators and reduction operations can be completed on-chip, reducing on-chip communication overhead and increasing throughput to an average of 2.7$\times$. With the further introduction of EDC, look-ahead drafting based on low-confidence unverified tokens is effectively suppressed, the average acceptance rate increases by 24.6\%, and the overall throughput reaches an average of 3.4$\times$. This effect is strongly influenced by model and algorithm correlation; for example, the LlaMA2+AdaEDL combination achieves only a 33\% acceleration compared to NPU+PIM+AAU, while the OPT group increases by less than 10\%. Finally, with the addition of TVC, the system can dynamically decide on pre-verification insertion based on execution time, reducing draft exhaustion and NPU idling caused by pre-verification on the PIM side. Although this slightly perturbs the accuracy of EDC, the final throughput is further increased to an average of 3.8$\times$.
+
+\paragraph{\textbf{Energy Efficiency}}
+
+We normalize the energy efficiency of the GPU-only baseline to 1. As shown in Figure~\ref{fig:ablation}(b), the task-level asynchronous NPU+PIM architecture significantly reduces synchronization overhead caused by mutual waiting by decoupling generation and verification. However, it also introduces some overhead due to reduced draft acceptance rates, resulting in an average energy efficiency improvement of 1.9$\times$. Furthermore, integrating the AAU within the PIM to reduce on-chip transfer of intermediate results from attention computation—although it introduces additional energy consumption overhead from the AAU—consistently improves energy efficiency to an average of 2.6$\times$. After introducing EDC, the average energy efficiency increases to 4.5$\times$, attributed to EDC's effective suppression of invalid computational waste caused by low-confidence drafts, which reduces rollback overhead in the PIM. Finally, incorporating the TVC module adds only the minimal necessary pre-verification within the NPU execution window, further reducing NPU idle time caused by the lack of drafts to verify, resulting in an overall average energy efficiency of 5.5$\times$.
+
+\begin{figure}[htbp!]
+  \centering
+  \vspace{-5pt}
+  \includegraphics[width=0.47\textwidth]{fig/SOTAExperiment.drawio.pdf}
+  \vspace{-15pt}
+  \caption{Comparison with State-of-the-Art}
+  \Description{Comparison with State-of-the-Art}
+  \label{fig:SOTA}
+  \vspace{-15pt}
+\end{figure}
+
+
+\subsection{Comparison with State-of-the-Art}
+
+\paragraph{\textbf{Throughput}}
+
+Figure~\ref{fig:SOTA} (a) compares the throughput of our architecture with a GPU and SpecPIM. AHASD achieves up to 4.6$times$ higher throughput than the GPU by using adaptive draft reasoning, primarily because low-compute-intensity operators in DLM to the GPU, saving significant data transfer time. AHASD also attains up to 1.5$\times$ higher throughput than SpecPIM (GPU + PIM). This improvement is mainly attributed to AHASD's task-level asynchronous scheduling and look-ahead drafting control. While SpecPIM can identify a drafting length that balances computation time between PIM and GPU through design space exploration, its operator-level parallelism introduces overhead imbalances across SpecPIM's Host and PIM when handling adaptive draft tasks with algorithm-determined draft lengths. AHASD's task-level asynchronous scheduling largely mitigates this issue. Furthermore, as shown in Fig.~\ref{fig:ablation} (a), AHASD's look-ahead drafting control and PIM-side pre-verification mechanism effectively prevent low acceptance rates of drafts, which would otherwise waste computing power.
+
+\paragraph{\textbf{Energy Efficiency (EE)}}
+
+Figure~\ref{fig:SOTA} (b) shows the energy efficiency among our architecture, the GPU, and SpecPIM architectures. AHASD achieves up to a 6.1$\times$ increase in energy efficiency relative to the GPU, primarily due to reduced data transfer and communication overhead. Compared to architectures like SpecPIM, which fully optimize energy efficiency through design space exploration, AHASD attains an average energy efficiency improvement of approximately 1.24$\times$. This improvement is mainly attributed to reduced synchronous idling of the NPU and PIM in asynchronous scheduling, as well as decreased communication overhead during non-linear operator calculations facilitated by the AAU.
+
+\subsection{Overhead Analysis}
+
+\begin{table}[!htbp]
+  \centering
+  \vspace{-12pt}
+  \caption{Area Overhead Summary}
+  \vspace{-10pt}
+  \resizebox{0.40\textwidth}{!}{
+  \begin{tabular}{lcc}
+  \hline
+  Module & Area (mm$^2$) & Percent of LPDDR5-PIM Die \\
+  \hline
+  EDC & 0.005 & $< 0.10\%$ \\
+  TVC                  & 0.003 & $< 0.05\%$ \\
+  Async Queue             & 0.001 & $< 0.02\%$ \\
+  AAU      & 0.45  & $< 2.5\%$ \\
+  \hline
+  \end{tabular}
+  \label{tab:area}
+  }
+  \vspace{-15pt}
+\end{table}
+
+\paragraph{\textbf{Area Overhead}}
+
+The primary overhead of AHASD lies in the EDC, TVC, AAU, and NPU-PIM asynchronous queues. To assess their hardware cost, we used CACTI~\cite{cacti} for SRAM area estimation and Yosys combined with OpenROAD for logic synthesis and area estimation. All area estimates are based on the 28 nm process node. Table \ref{tab:area} presents the area estimation results for the four modules. It can be observed that the EDC, TVC, and asynchronous queues consist primarily of small-scale registers plus a minimal amount of control logic, with a total area of less than 0.009 mm$^2$, accounting for under 0.2\% of the LPDDR5-PIM die. The AAU synthesis area is 0.45 mm$^2$, which does not exceed 2.5\% of the LPDDR5-PIM die. Overall, the additional hardware area overhead of AHASD is less than 3\% DRAM die, which is significantly lower than that of DRAM peripherals and traditional PIM logic (typically 10–15\%).
+\begin{table}[!htbp]
+  \centering
+  \vspace{-10pt}
+  \caption{Power \& Efficiency Comparison}
+  \vspace{-10pt}
+  \resizebox{0.47\textwidth}{!}{
+  \begin{tabular}{lcccc}
+  \hline
+  Configuration & LPDDR5 & NPU & Throughput & Energy/token \\
+  \hline
+  NPU + LPDDR5 (base)  & 1.00$\times$          & 1.00$\times$          & 1.00$\times$        & 1.00$\times$        \\
+  NPU + LPDDR5-PIM  & 1.85$\times$    & 1.10$\times$    & 2.70$\times$    & 0.55$\times$  \\
+  AHASD        & 1.90$\times$    & 1.15$\times$    & 2.90$\times$    & 0.40$\times$  \\
+  \hline
+  \end{tabular}
+  }
+  \label{tab:power}
+  \vspace{-15pt}
+  \end{table}
+\paragraph{\textbf{Power Overhead}}
+
+To evaluate AHASD's power performance on mobile LPDDR5-PIM, we measured both memory-side background power (including clock, I/O, row buffer maintenance, etc.) and dynamic power using the LPDDR5 power model. The AAU and small-batch pre-verification operators were converted into equivalent read-modify-write energy. On the NPU side, we included DMA transfer, SPM access, and computing core dynamic power during TLM verification. The results are presented in Table~\ref{tab:power}. Compared to the baseline (NPU + LPDDR5), AHASD introduces additional memory access operations due to asynchronous queues and the AAU, resulting in an average increase of approximately 1.90$\times$ in LPDDR5 memory-side power consumption. However, benefiting from task-level asynchrony and EDC/TVC's invalid drafting suppression, the end-to-end throughput increases by an average of 2.90$\times$, leading to an overall energy consumption reduction of approximately 50\%. Compared to heterogeneous architectures with added PIM, AHASD's LPDDR5 power consumption is similar, but pre-verification during NPU execution reduces idling and improves throughput by 1.40$\times$, yielding a 25\% increase in energy efficiency.
+
+\section{Conclusion}
+
+This paper presents AHASD, an asynchronous heterogeneous speculative decoding system designed to overcome load imbalance and computational inefficiency in adaptive draft speculative decoding on mobile NPU–PIM architectures. AHASD separates DLM and TLM components using a task-level asynchronous framework and incorporates entropy-history-aware look-ahead drafting with time-aware pre-verification. This method adaptively switches drafting and pre-verification based on confidence and latency, reducing ineffective low-confidence drafts. Experiments show AHASD improves throughput by up to 4.6$\times$ and energy efficiency by up to 6.1$\times$ compared to GPUs. It also maintains up to a 1.5$\times$ throughput and 1.24$\times$ energy efficiency advantage over SpecPIM, with hardware overhead below 3\% of the DRAM die area, indicating strong potential for lightweight mobile deployment.
+
+%%
+%% The next two lines define the bibliography style to be used, and
+%% the bibliography file.
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{sample-base}
+
+
+%%
+%% If your work has an appendix, this is the place to put it.
+\appendix
+
+
+\end{document}
+\endinput
+%%
+%% End of file `sample-sigconf.tex'.
