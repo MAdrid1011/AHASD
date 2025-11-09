@@ -53,14 +53,12 @@ run_simulation() {
     OUT_DIR="$RESULTS_DIR/${model}_${algorithm}_${config_name}"
     mkdir -p $OUT_DIR
     
-    # Generate simulation command
-    # Note: This is a template - actual command depends on your simulator interface
     echo "  DLM: $DLM"
     echo "  TLM: $TLM"
     echo "  Algorithm: $algorithm"
     echo "  EDC: $enable_edc, TVC: $enable_tvc, AAU: $enable_aau"
     
-    # Simulated execution (replace with actual simulator call)
+    # Generate configuration file for actual simulation
     cat > "$OUT_DIR/config.json" <<EOF
 {
   "model": {
@@ -102,64 +100,92 @@ EOF
     # Log simulation parameters
     echo "Configuration saved to: $OUT_DIR/config.json"
     
-    # Simulate execution time
-    sleep 0.1
+    # Run actual ONNXim simulator with AHASD
+    echo "  Running ONNXim+PIMSimulator..."
     
-    # Generate mock results (replace with actual simulation results)
-    generate_mock_results "$OUT_DIR" "$config_name"
+    # Build ONNXim model list for this configuration
+    MODEL_LIST_FILE="$OUT_DIR/models_list.json"
+    cat > "$MODEL_LIST_FILE" <<MODELS_EOF
+{
+  "models": [
+    {
+      "name": "${DLM}",
+      "type": "draft",
+      "request_time": 0
+    },
+    {
+      "name": "${TLM}",
+      "type": "target",
+      "request_time": 0
+    }
+  ]
+}
+MODELS_EOF
     
-    echo "  ✓ Completed"
+    # Run the actual simulator
+    cd $ONNXIM_HOME
+    ./build/onnxim_main \
+        --config "$OUT_DIR/config.json" \
+        --models_list "$MODEL_LIST_FILE" \
+        --mode language \
+        --log_level info \
+        > "$OUT_DIR/simulation.log" 2>&1
+    
+    SIM_STATUS=$?
+    cd - > /dev/null
+    
+    if [ $SIM_STATUS -eq 0 ]; then
+        echo "  ✓ Simulation completed successfully"
+        # Extract metrics from simulation output
+        extract_simulation_metrics "$OUT_DIR"
+    else
+        echo "  ✗ Simulation failed (see $OUT_DIR/simulation.log)"
+        return 1
+    fi
 }
 
-# Function to generate mock results for demonstration
-generate_mock_results() {
+# Function to extract metrics from actual simulation output
+extract_simulation_metrics() {
     local out_dir=$1
-    local config=$2
     
-    # Generate performance metrics
-    cat > "$out_dir/metrics.txt" <<EOF
-=== AHASD Simulation Results ===
-Configuration: $config
-Timestamp: $(date)
+    # Parse simulation log to extract metrics
+    # Look for AHASD statistics section in the log
+    if [ -f "$out_dir/simulation.log" ]; then
+        # Extract key metrics from ONNXim output
+        grep -A 50 "AHASD Statistics" "$out_dir/simulation.log" > "$out_dir/metrics.txt"
+        
+        # Also check for PIM statistics
+        grep -A 20 "PIM Statistics" "$out_dir/simulation.log" >> "$out_dir/metrics.txt"
+        
+        # If metrics file is empty, simulation may not have AHASD output
+        if [ ! -s "$out_dir/metrics.txt" ]; then
+            echo "Warning: No AHASD statistics found in simulation output"
+            echo "=== Simulation Log ===" > "$out_dir/metrics.txt"
+            tail -n 100 "$out_dir/simulation.log" >> "$out_dir/metrics.txt"
+        fi
+    else
+        echo "Error: Simulation log not found at $out_dir/simulation.log"
+    fi
+    
+    # Generate results JSON for easier analysis
+    python3 <<PYTHON_EOF
+import json
+import re
 
-Performance Metrics:
-- Total Cycles: 15234567
-- Throughput: 45.2 tokens/sec
-- Energy: 234.5 mJ
-- Energy Efficiency: 0.193 tokens/mJ
+# Parse metrics from log
+metrics = {}
+try:
+    with open("$out_dir/metrics.txt", 'r') as f:
+        content = f.read()
+        # Extract numeric values using regex
+        # This is a template - adjust based on actual ONNXim output format
+        metrics['status'] = 'completed'
+except:
+    metrics['status'] = 'failed'
 
-Draft Statistics:
-- Total Drafts Generated: 2048
-- Total Drafts Accepted: 1534 (74.9%)
-- Average Draft Length: 5.2
-- Average Entropy: 2.34
-
-EDC Statistics:
-- Prediction Accuracy: 82.3%
-- Suppression Rate: 15.6%
-
-TVC Statistics:
-- Pre-verifications Inserted: 156
-- Prevented NPU Idles: 142
-- Success Rate: 91.0%
-
-Queue Statistics:
-- Average Unverified Queue Size: 3.2
-- Max Queue Depth: 12
-- Queue Full Events: 0
-
-Hardware Utilization:
-- NPU Utilization: 78.5%
-- PIM Utilization: 84.2%
-- AAU Utilization: 12.3%
-EOF
-
-    # Generate cycle trace
-    echo "cycle,event,detail" > "$out_dir/trace.csv"
-    for i in {1..100}; do
-        echo "$((i*1000)),draft_gen,length=$((RANDOM % 8 + 1))" >> "$out_dir/trace.csv"
-        echo "$((i*1000+500)),verification,accepted=$((RANDOM % 6))" >> "$out_dir/trace.csv"
-    done
+with open("$out_dir/results.json", 'w') as f:
+    json.dump(metrics, f, indent=2)
+PYTHON_EOF
 }
 
 # Main simulation loop
