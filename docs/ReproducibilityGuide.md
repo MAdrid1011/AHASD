@@ -1,119 +1,119 @@
 # AHASD Reproducibility Guide
 
-本文档提供完整的步骤来重现论文中的实验结果。
+This document provides complete step-by-step instructions to reproduce all experimental results from the paper.
 
-## 📋 前置要求
+## 📋 Prerequisites
 
-### 硬件要求
+### Hardware Requirements
 
-- **CPU**: 16+ 核心 (推荐 Intel Xeon 或 AMD EPYC)
-- **内存**: 64GB+ RAM
-- **存储**: 500GB+ 可用空间 (用于模拟器输出)
-- **可选**: NVIDIA GPU (用于 GPU baseline 对比)
+- **CPU**: 16+ cores (Intel Xeon or AMD EPYC recommended)
+- **Memory**: 64GB+ RAM
+- **Storage**: 500GB+ available space (for simulator outputs)
+- **Optional**: NVIDIA GPU (for GPU baseline comparison)
 
-### 软件要求
+### Software Requirements
 
 ```bash
-# 操作系统
-Ubuntu 20.04 LTS 或更高版本
+# Operating System
+Ubuntu 20.04 LTS or later
 
-# 编译工具
+# Build tools
 sudo apt-get update
 sudo apt-get install -y build-essential cmake ninja-build
 sudo apt-get install -y gcc-10 g++-10
 sudo apt-get install -y python3 python3-pip
 
-# Chisel/Scala (用于 XiangShan)
+# Chisel/Scala (for XiangShan)
 sudo apt-get install -y default-jdk scala
 curl -L https://github.com/com-lihaoyi/mill/releases/download/0.10.0/0.10.0 > mill
 chmod +x mill
 sudo mv mill /usr/local/bin/
 
-# Python 依赖
+# Python dependencies
 pip3 install numpy matplotlib pandas jupyter
 pip3 install onnx onnxruntime torch
 ```
 
-## 🔧 环境配置
+## 🔧 Environment Setup
 
-### 步骤 1: 克隆仓库并初始化子模块
+### Step 1: Clone Repository and Initialize Submodules
 
 ```bash
 git clone https://github.com/your-org/AHASD.git
 cd AHASD
 
-# 初始化子模块 (ONNXim, PIMSimulator, XiangShan)
+# Initialize submodules (ONNXim, PIMSimulator, XiangShan)
 git submodule update --init --recursive
 ```
 
-### 步骤 2: 构建 ONNXim 模拟器
+### Step 2: Build ONNXim Simulator
 
 ```bash
 cd ONNXim
 
-# 安装 Conan 依赖管理器
+# Install Conan package manager
 pip3 install conan
 
-# 创建构建目录
+# Create build directory
 mkdir build && cd build
 
-# 配置 CMake (启用 AHASD 支持)
+# Configure CMake (enable AHASD support)
 cmake .. -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DENABLE_AHASD=ON \
     -DCMAKE_CXX_COMPILER=g++-10 \
     -DCMAKE_C_COMPILER=gcc-10
 
-# 构建 (这可能需要 10-20 分钟)
+# Build (may take 10-20 minutes)
 ninja -j$(nproc)
 
-# 验证构建
+# Verify build
 ./onnxim_main --version
-# 应输出: ONNXim v1.0 (AHASD enabled)
+# Should output: ONNXim v1.0 (AHASD enabled)
 
 cd ../..
 ```
 
-### 步骤 3: 构建 PIMSimulator
+### Step 3: Build PIMSimulator
 
 ```bash
 cd PIMSimulator
 
-# 使用 SCons 构建
+# Build using SCons
 scons -j$(nproc)
 
-# 验证构建
+# Verify build
 ./build/pim_simulator --help
 
 cd ..
 ```
 
-### 步骤 4: 构建 XiangShan (可选，用于完整端到端测试)
+### Step 4: Build XiangShan (Optional, for full end-to-end testing)
 
 ```bash
 cd XiangShan
 
-# 生成 Verilog (启用 AHASD)
+# Generate Verilog (with AHASD enabled)
 make verilog AHASD=1
 
-# 这会生成 build/XSTop.v，包含 AHASD 控制模块
+# This generates build/XSTop.v with AHASD control modules
 
-# 构建仿真器
+# Build emulator
 make emu AHASD=1
 
 cd ..
 ```
 
-### 步骤 5: 下载模型权重
+### Step 5: Download Model Weights
 
 ```bash
-# 创建模型目录
+# Create model directory
 mkdir -p ONNXim/models/language_models
 
 cd ONNXim/models/language_models
 
-# 下载并转换模型 (需要大量磁盘空间)
-# OPT 模型
+# Download and convert models (requires significant disk space)
+# OPT models
 python3 ../../scripts/generate_transformer_onnx.py \
     --model facebook/opt-1.3b \
     --output opt-1.3b
@@ -122,7 +122,7 @@ python3 ../../scripts/generate_transformer_onnx.py \
     --model facebook/opt-6.7b \
     --output opt-6.7b
 
-# LLaMA2 模型
+# LLaMA2 models
 python3 ../../scripts/generate_transformer_onnx.py \
     --model meta-llama/Llama-2-7b-hf \
     --output llama2-7b
@@ -131,7 +131,7 @@ python3 ../../scripts/generate_transformer_onnx.py \
     --model meta-llama/Llama-2-13b-hf \
     --output llama2-13b
 
-# PaLM 模型
+# PaLM models
 python3 ../../scripts/generate_transformer_onnx.py \
     --model google/palm-8b \
     --output palm-8b
@@ -143,202 +143,202 @@ python3 ../../scripts/generate_transformer_onnx.py \
 cd ../../..
 ```
 
-## 🧪 运行实验
+## 🧪 Running Experiments
 
-### 快速测试 (单一配置)
+### Quick Test (Single Configuration)
 
-验证环境设置正确：
+Verify environment setup is correct:
 
 ```bash
-# 运行单一配置的快速测试
+# Run quick test with single configuration
 ./scripts/run_single_config.py \
     --model llama2-7b:llama2-13b \
     --algorithm adaedl \
     --config ahasd_full \
     --output results/quick_test
 
-# 检查结果
+# Check results
 cat results/quick_test/metrics.txt
 ```
 
-预期输出应包含：
+Expected output should include:
 - Throughput: ~40-50 tokens/sec
 - Energy Efficiency: ~0.18-0.22 tokens/mJ
 - Draft Acceptance Rate: ~70-80%
 - EDC Prediction Accuracy: ~80-85%
 
-### 完整实验套件
+### Full Experiment Suite
 
-运行论文中的所有实验：
+Run all experiments from the paper:
 
 ```bash
-# 设置环境变量
+# Set environment variables
 export ONNXIM_HOME=$(pwd)/ONNXim
 export PIM_SIM_HOME=$(pwd)/PIMSimulator
 
-# 运行完整实验 (可能需要 24-48 小时)
+# Run full experiments (may take 24-48 hours)
 ./scripts/run_ahasd_simulation.sh
 
-# 结果将保存在 results/ahasd_YYYYMMDD_HHMMSS/
+# Results will be saved in results/ahasd_YYYYMMDD_HHMMSS/
 ```
 
-实验包括：
-- 3 种模型配置 (Small, Medium, Large)
-- 4 种自适应算法 (SpecDec++, SVIP, AdaEDL, BanditSpec)
-- 5 种系统配置 (消融实验)
-- **总计**: 60 个实验配置
+Experiments include:
+- 3 model configurations (Small, Medium, Large)
+- 4 adaptive algorithms (SpecDec++, SVIP, AdaEDL, BanditSpec)
+- 5 system configurations (ablation study)
+- **Total**: 60 experiment configurations
 
-### 并行运行实验 (加速)
+### Parallel Execution (Accelerated)
 
-如果有多核 CPU，可以并行运行：
+If you have a multi-core CPU, run experiments in parallel:
 
 ```bash
-# 修改脚本启用并行执行
+# Modify script to enable parallel execution
 vim scripts/run_ahasd_simulation.sh
-# 将 run_simulation 函数调用改为后台执行：
+# Change run_simulation function calls to background execution:
 # run_simulation ... &
 
-# 或者使用 GNU Parallel
+# Or use GNU Parallel
 parallel -j 8 ./scripts/run_single_config.py ::: \
     llama2-7b:llama2-13b \
     opt-1.3b:opt-6.7b \
     palm-8b:palm-62b
 ```
 
-## 📊 结果分析
+## 📊 Results Analysis
 
-### 生成图表
+### Generate Plots
 
 ```bash
-# 分析结果并生成论文图表
+# Analyze results and generate paper figures
 python3 scripts/analyze_ahasd_results.py results/ahasd_*/
 
-# 输出:
+# Outputs:
 # - plots/throughput_comparison.png  (Figure 7a)
 # - plots/energy_efficiency.png      (Figure 7b)
 # - plots/ablation_study.png         (Figure 6)
 # - plots/summary_table.csv          (Table 3)
 ```
 
-### 验证硬件开销
+### Verify Hardware Overhead
 
 ```bash
-# 验证论文中声称的硬件开销
+# Verify hardware overhead claims from paper
 python3 scripts/validate_hardware_costs.py
 
-# 应输出:
+# Should output:
 # EDC: 0.0002 mm² ✓
 # TVC: 0.0002 mm² ✓
 # AAU: 0.4500 mm² ✓
 # Total: 0.4515 mm² (2.51% of DRAM) ✓
 ```
 
-## 📈 预期结果
+## 📈 Expected Results
 
-### 吞吐量提升 (vs GPU-only baseline)
+### Throughput Improvement (vs GPU-only baseline)
 
-| 模型配置 | SpecDec++ | SVIP | AdaEDL | BanditSpec |
-|---------|-----------|------|--------|------------|
+| Model Config | SpecDec++ | SVIP | AdaEDL | BanditSpec |
+|-------------|-----------|------|--------|------------|
 | OPT Small | 3.8× | 4.1× | 4.3× | 4.6× |
 | LLaMA2 Medium | 3.2× | 3.5× | 3.8× | 3.9× |
 | PaLM Large | 2.8× | 3.1× | 3.3× | 3.5× |
 
-### 能效提升 (vs GPU-only baseline)
+### Energy Efficiency Improvement (vs GPU-only baseline)
 
-| 模型配置 | SpecDec++ | SVIP | AdaEDL | BanditSpec |
-|---------|-----------|------|--------|------------|
+| Model Config | SpecDec++ | SVIP | AdaEDL | BanditSpec |
+|-------------|-----------|------|--------|------------|
 | OPT Small | 5.2× | 5.6× | 5.9× | 6.1× |
 | LLaMA2 Medium | 4.5× | 4.8× | 5.1× | 5.3× |
 | PaLM Large | 3.9× | 4.2× | 4.5× | 4.7× |
 
-### 消融实验 (LLaMA2-7B, AdaEDL)
+### Ablation Study (LLaMA2-7B, AdaEDL)
 
-| 配置 | 吞吐量 | 能效 |
-|-----|--------|------|
+| Configuration | Throughput | Energy Efficiency |
+|--------------|------------|-------------------|
 | Baseline (GPU-only) | 1.0× | 1.0× |
 | NPU+PIM | 2.2× | 1.9× |
 | +AAU | 2.7× | 2.6× |
 | +EDC | 3.4× | 4.5× |
 | +TVC (Full) | 3.8× | 5.5× |
 
-**注意**: 实际结果可能有 ±10% 的变化，这是由于：
-- 模型量化的随机性
-- 自适应算法的随机采样
-- 模拟器的初始化状态
+**Note**: Actual results may vary by ±10% due to:
+- Randomness in model quantization
+- Random sampling in adaptive algorithms
+- Initialization state of simulators
 
-## 🐛 故障排除
+## 🐛 Troubleshooting
 
-### 问题 1: ONNXim 编译失败
+### Issue 1: ONNXim Build Fails
 
 ```bash
-# 检查 C++ 编译器版本
-g++ --version  # 应该是 10.0 或更高
+# Check C++ compiler version
+g++ --version  # Should be 10.0 or higher
 
-# 清理并重新构建
+# Clean and rebuild
 cd ONNXim/build
 rm -rf *
 cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_AHASD=ON
 ninja -j$(nproc)
 ```
 
-### 问题 2: 模型下载失败
+### Issue 2: Model Download Fails
 
 ```bash
-# 使用代理 (如果在国内)
+# Use proxy (if in China)
 export HF_ENDPOINT=https://hf-mirror.com
 
-# 或手动下载模型
-# 访问 Hugging Face 手动下载后放置在 ONNXim/models/language_models/
+# Or manually download models
+# Visit Hugging Face and manually download, then place in ONNXim/models/language_models/
 ```
 
-### 问题 3: 模拟器运行缓慢
+### Issue 3: Simulator Runs Slowly
 
 ```bash
-# 启用优化
+# Enable optimizations
 export ONNXIM_OPT_LEVEL=3
 export OMP_NUM_THREADS=$(nproc)
 
-# 减少日志输出
-./onnxim_main --log_level info  # 而不是 debug 或 trace
+# Reduce logging output
+./onnxim_main --log_level info  # instead of debug or trace
 ```
 
-### 问题 4: 内存不足
+### Issue 4: Out of Memory
 
 ```bash
-# 减少批量大小
+# Reduce batch size
 vim configs/ahasd_config_template.json
-# 将 "batch_size": 1 改为更小的值
+# Change "batch_size": 1 to smaller value
 
-# 或者增加 swap
+# Or increase swap
 sudo fallocate -l 64G /swapfile
 sudo chmod 600 /swapfile
 sudo mkswap /swapfile
 sudo swapon /swapfile
 ```
 
-## 📝 验证清单
+## 📝 Verification Checklist
 
-运行完实验后，验证以下内容：
+After running experiments, verify the following:
 
-- [ ] 所有 60 个配置都成功完成
-- [ ] 每个配置目录包含 `metrics.txt` 和 `results.json`
-- [ ] 吞吐量提升在预期范围内 (2.8×-4.6×)
-- [ ] 能效提升在预期范围内 (3.9×-6.1×)
-- [ ] 硬件开销验证通过 (< 3% DRAM die)
-- [ ] 图表生成成功，与论文图表相似
+- [ ] All 60 configurations completed successfully
+- [ ] Each configuration directory contains `metrics.txt` and `results.json`
+- [ ] Throughput improvement within expected range (2.8×-4.6×)
+- [ ] Energy efficiency improvement within expected range (3.9×-6.1×)
+- [ ] Hardware overhead verification passes (< 3% DRAM die)
+- [ ] Plots generated successfully and resemble paper figures
 
-## 🆘 获取帮助
+## 🆘 Getting Help
 
-如果遇到问题：
+If you encounter issues:
 
-1. 检查 `results/*/simulation.log` 查看详细错误信息
-2. 运行诊断脚本: `./scripts/test_e2e.sh`
-3. 查看 FAQ: `docs/FAQ.md`
-4. 提交 Issue: https://github.com/your-org/AHASD/issues
+1. Check `results/*/simulation.log` for detailed error messages
+2. Run diagnostic script: `./scripts/test_e2e.sh`
+3. Review FAQ: `docs/FAQ.md`
+4. Submit Issue: https://github.com/your-org/AHASD/issues
 
-## 📄 引用
+## 📄 Citation
 
-如果使用本代码，请引用：
+If you use this code, please cite:
 
 ```bibtex
 @inproceedings{ahasd2024,
@@ -349,9 +349,34 @@ sudo swapon /swapfile
 }
 ```
 
-## 📅 更新日志
+## 📅 Changelog
 
-- **2024-11**: 初始发布
-- **2024-11**: 修复 mock 数据问题，使用真实模拟器
-- **2024-11**: 添加 XiangShan 集成代码
+- **November 2024**: Initial release
+- **November 2024**: Fixed mock data issue, use real simulator
+- **November 2024**: Added XiangShan integration code
 
+## 🔒 License
+
+This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+- ONNXim team at KAIST
+- Samsung PIMSimulator team
+- XiangShan team at ICT, CAS
+- Research supported by [Your funding sources]
+
+## 📧 Contact
+
+For questions or collaboration:
+- Email: your-email@university.edu
+- GitHub Issues: https://github.com/your-org/AHASD/issues
+- Project Website: https://ahasd-project.org
+
+---
+
+**Last Updated**: November 9, 2024  
+**Version**: 2.0  
+**Maintainers**: AHASD Research Team  
+**Estimated Setup Time**: 4-6 hours  
+**Estimated Full Reproduction Time**: 24-48 hours
