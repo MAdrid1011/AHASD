@@ -161,8 +161,8 @@ switch (operation) {
 Based on the paper, AHASD should achieve:
 
 ### vs GPU-only
-- Throughput: Up to **4.6×**
-- Energy efficiency: Up to **6.1×**
+- Throughput: Up to **4.2×**
+- Energy efficiency: Up to **5.6×**
 
 ### vs SpecPIM
 - Throughput: Up to **1.5×**

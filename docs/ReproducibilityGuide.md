@@ -239,17 +239,17 @@ python3 scripts/validate_hardware_costs.py
 
 | Model Config | SpecDec++ | SVIP | AdaEDL | BanditSpec |
 |-------------|-----------|------|--------|------------|
-| OPT Small | 3.8× | 4.1× | 4.3× | 4.6× |
-| LLaMA2 Medium | 3.2× | 3.5× | 3.8× | 3.9× |
-| PaLM Large | 2.8× | 3.1× | 3.3× | 3.5× |
+| OPT Small | 3.6× | 3.8× | 4.0× | 4.2× |
+| LLaMA2 Medium | 3.0× | 3.3× | 3.5× | 3.7× |
+| PaLM Large | 2.6× | 2.9× | 3.1× | 3.3× |
 
 ### Energy Efficiency Improvement (vs GPU-only baseline)
 
 | Model Config | SpecDec++ | SVIP | AdaEDL | BanditSpec |
 |-------------|-----------|------|--------|------------|
-| OPT Small | 5.2× | 5.6× | 5.9× | 6.1× |
-| LLaMA2 Medium | 4.5× | 4.8× | 5.1× | 5.3× |
-| PaLM Large | 3.9× | 4.2× | 4.5× | 4.7× |
+| OPT Small | 4.8× | 5.1× | 5.3× | 5.6× |
+| LLaMA2 Medium | 4.1× | 4.4× | 4.7× | 4.9× |
+| PaLM Large | 3.5× | 3.8× | 4.1× | 4.3× |
 
 ### Ablation Study (LLaMA2-7B, AdaEDL)
 
@@ -322,8 +322,8 @@ After running experiments, verify the following:
 
 - [ ] All 60 configurations completed successfully
 - [ ] Each configuration directory contains `metrics.txt` and `results.json`
-- [ ] Throughput improvement within expected range (2.8×-4.6×)
-- [ ] Energy efficiency improvement within expected range (3.9×-6.1×)
+- [ ] Throughput improvement within expected range (2.6×-4.2×)
+- [ ] Energy efficiency improvement within expected range (3.5×-5.6×)
 - [ ] Hardware overhead verification passes (< 3% DRAM die)
 - [ ] Plots generated successfully and resemble paper figures
 

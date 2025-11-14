@@ -15,7 +15,7 @@ Common questions and troubleshooting for AHASD.
 ### Q: What performance improvements can I expect?
 
 **A**: Based on paper results:
-- **vs GPU-only**: up to 4.6× throughput, 6.1× energy efficiency
+- **vs GPU-only**: up to 4.2× throughput, 5.6× energy efficiency
 - **vs SpecPIM**: up to 1.5× throughput, 1.24× energy efficiency
 
 Actual results depend on model size, algorithm, and hardware configuration.

@@ -62,7 +62,7 @@ done
 
 | Baseline | Throughput | Energy Efficiency |
 |----------|------------|-------------------|
-| vs GPU-only | 2.8-4.6× | 3.5-6.1× |
+| vs GPU-only | 2.6-4.2× | 3.5-5.6× |
 | vs SpecPIM | 1.2-1.5× | 1.15-1.24× |
 
 ---

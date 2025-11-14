@@ -6,7 +6,6 @@
 
 Research implementation of **AHASD: Asynchronous Heterogeneous Architecture for LLM Speculative Decoding on Mobile Devices**.
 
-> **TL;DR**: AHASD achieves up to **4.6×** throughput and **6.1×** energy efficiency for LLM speculative decoding on mobile NPU-PIM systems through task-level asynchronous execution.
 
 ---
 
@@ -46,7 +45,7 @@ AHASD integrates three platforms:
 
 | Baseline | Throughput | Energy Efficiency |
 |----------|------------|-------------------|
-| vs GPU-only | up to **4.6×** | up to **6.1×** |
+| vs GPU-only | up to **4.2×** | up to **5.6×** |
 | vs SpecPIM | up to **1.5×** | up to **1.24×** |
 
 ### Hardware Overhead
@@ -65,8 +64,6 @@ AHASD integrates three platforms:
 ### Installation
 
 ```bash
-git clone --recursive https://github.com/yourusername/AHASD.git
-cd AHASD
 
 # Build ONNXim
 cd ONNXim && mkdir build && cd build && cmake .. && make -j8
