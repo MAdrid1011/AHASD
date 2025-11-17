@@ -7,9 +7,7 @@ Get started with AHASD simulator in 5 minutes.
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/AHASD.git
 cd AHASD
-git submodule update --init --recursive
 ```
 
 ### 2. Install Dependencies

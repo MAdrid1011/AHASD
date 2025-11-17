@@ -17,7 +17,6 @@ Thank you for your interest in contributing to AHASD! This document provides gui
 
 ```bash
 # Fork on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/AHASD.git
 cd AHASD
 git remote add upstream https://github.com/original/AHASD.git
 ```
