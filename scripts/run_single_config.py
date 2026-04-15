@@ -72,6 +72,36 @@ LANGUAGE_MODEL_CONFIGS = {
         "pipeline_parallel_size": 1,
         "source_note": "Generated from standard OPT-6.7B architecture for ONNXim smoke validation.",
     },
+    "palm-8b": {
+        "num_hidden_layers": 32,
+        "hidden_size": 4096,
+        "num_kv_heads": 16,
+        "num_attention_heads": 16,
+        "intermediate_size": 16384,
+        "ffn_type": "palm",
+        "activation_function": "swiglu",
+        "vocab_size": 256000,
+        "max_seq_length": 2048,
+        "run_single_layer": True,
+        "tensor_parallel_size": 1,
+        "pipeline_parallel_size": 1,
+        "source_note": "Generated from AHASD template PaLM-like 8B architecture for ONNXim validation.",
+    },
+    "palm-62b": {
+        "num_hidden_layers": 64,
+        "hidden_size": 8192,
+        "num_kv_heads": 32,
+        "num_attention_heads": 32,
+        "intermediate_size": 32768,
+        "ffn_type": "palm",
+        "activation_function": "swiglu",
+        "vocab_size": 256000,
+        "max_seq_length": 2048,
+        "run_single_layer": True,
+        "tensor_parallel_size": 1,
+        "pipeline_parallel_size": 1,
+        "source_note": "Generated from AHASD template PaLM-like 62B architecture for ONNXim validation.",
+    },
 }
 
 def parse_args():
@@ -86,6 +116,8 @@ def parse_args():
                        help='Adaptive drafting algorithm')
     
     # AHASD features
+    parser.add_argument('--enable-ahasd', action='store_true',
+                       help='Enable AHASD integration without requiring a component flag')
     parser.add_argument('--enable-edc', action='store_true',
                        help='Enable Entropy-History-Aware Drafting Control')
     parser.add_argument('--enable-tvc', action='store_true',
@@ -157,6 +189,15 @@ def create_config(args):
         },
         "algorithm": args.algorithm,
         "ahasd": {
+            "enable_ahasd": (
+                args.enable_ahasd
+                or args.enable_edc
+                or args.enable_tvc
+                or args.enable_aau
+                or args.enable_ssrc
+                or args.enable_ssrc_proxy
+                or args.enable_ssrc_trace
+            ),
             "enable_edc": args.enable_edc,
             "enable_tvc": args.enable_tvc,
             "enable_aau": args.enable_aau,
@@ -268,14 +309,7 @@ def create_onnxim_config(config, onnxim_root, output_dir):
     ahasd_config = config['ahasd']
     onnxim_config['core_freq'] = int(round(ahasd_config['npu_freq_mhz']))
     onnxim_config['dram_freq'] = int(round(ahasd_config['pim_freq_mhz']))
-    onnxim_config['enable_ahasd'] = bool(
-        ahasd_config['enable_edc']
-        or ahasd_config['enable_tvc']
-        or ahasd_config['enable_aau']
-        or ahasd_config['enable_ssrc']
-        or ahasd_config['enable_ssrc_proxy']
-        or ahasd_config['enable_ssrc_trace']
-    )
+    onnxim_config['enable_ahasd'] = bool(ahasd_config['enable_ahasd'])
     onnxim_config['enable_edc'] = ahasd_config['enable_edc']
     onnxim_config['enable_tvc'] = ahasd_config['enable_tvc']
     onnxim_config['enable_aau'] = ahasd_config['enable_aau']
