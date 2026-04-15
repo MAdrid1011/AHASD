@@ -235,6 +235,10 @@ void Simulator::cycle() {
     }
   }
   spdlog::info("Simulation Finished at {} cycle {} us", _core_cycles, _core_cycles / (_config.core_freq) );
+  if (_enable_ahasd && _ahasd) {
+    spdlog::info("AHASD Metric Scope: sidecar_accounting");
+    spdlog::info("AHASD Cycle Coupling: sidecar_only");
+  }
   
   /* Print simulation stats */
   for (int core_id = 0; core_id < _n_cores; core_id++) {

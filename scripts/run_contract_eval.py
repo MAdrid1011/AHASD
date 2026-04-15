@@ -46,6 +46,9 @@ METRIC_KEYS = [
     "throughput_tokens_per_sec",
     "energy_mj",
     "energy_efficiency_tokens_per_mj",
+    "dram_pim_total_power_w",
+    "estimated_energy_mj_from_power_time",
+    "ahasd_cycle_coupling_active",
     "drafts_generated",
     "drafts_accepted",
     "acceptance_rate",
@@ -429,6 +432,10 @@ def write_summary_files(output_root, args, runs, hardware):
         or metric(r, "energy_mj") is not None
         for r in runs
     )
+    estimated_energy_present = (not args.dry_run) and any(
+        metric(r, "estimated_energy_mj_from_power_time") is not None
+        for r in runs
+    )
 
     summary = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -440,6 +447,7 @@ def write_summary_files(output_root, args, runs, hardware):
         "completed_count": len(completed),
         "failed_count": len(failed),
         "energy_metrics_available": energy_present,
+        "estimated_energy_metrics_available": estimated_energy_present,
         "hardware_validation": hardware,
         "contract_metrics": contract_metrics,
         "runs": runs,
@@ -480,6 +488,7 @@ def write_summary_files(output_root, args, runs, hardware):
         f"- Dry run: {args.dry_run}",
         f"- Completed: {len(completed)}/{len(runs)}",
         f"- Energy metrics available: {energy_present}",
+        f"- Estimated energy diagnostics available: {estimated_energy_present}",
         f"- Hardware area overhead: {contract_metrics['paper_area_overhead_total_percent_text']['value']}",
         "",
         "## Contract Metrics",

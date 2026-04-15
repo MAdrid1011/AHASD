@@ -540,10 +540,23 @@ def parse_simulation_log(log_file, config):
         "configuration": config['experiment_name'],
         "metrics": {}
     }
+
+    def add_metric_note(note):
+        results.setdefault('metric_notes', [])
+        if note not in results['metric_notes']:
+            results['metric_notes'].append(note)
+
+    def record_energy_mj(value_mj, source):
+        results['metrics']['energy_mj'] = value_mj
+        results.setdefault('metric_quality', {})['energy_metric_source'] = source
     
     try:
         with open(log_file, 'r') as f:
             content = f.read()
+            generated_tokens = (
+                config['simulation']['generation_length']
+                * config['simulation']['batch_size']
+            )
             
             # Parse throughput and cycles
             if match := re.search(r'Total Simulation Cycles:\s*(\d+)', content):
@@ -556,24 +569,68 @@ def parse_simulation_log(log_file, config):
             if match := re.search(r'Throughput:\s*([\d.]+)\s*tokens/sec', content):
                 results['metrics']['throughput_tokens_per_sec'] = float(match.group(1))
             elif results['metrics'].get('simulation_time_us', 0) > 0:
-                generated_tokens = (
-                    config['simulation']['generation_length']
-                    * config['simulation']['batch_size']
-                )
                 results['metrics']['throughput_tokens_per_sec'] = (
                     generated_tokens / (results['metrics']['simulation_time_us'] / 1_000_000.0)
                 )
-                results['metric_notes'] = results.get('metric_notes', [])
-                results['metric_notes'].append(
+                add_metric_note(
                     "throughput_tokens_per_sec derived from ONNXim simulation time and generated smoke trace length."
                 )
+
+            if config['ahasd']['enable_ahasd']:
+                quality = results.setdefault('metric_quality', {})
+                quality['raw_cycle_scope'] = 'onnxim_core_completion_cycles'
+                if match := re.search(r'AHASD Metric Scope:\s*([A-Za-z0-9_\-]+)', content):
+                    quality['ahasd_metric_scope'] = match.group(1)
+                if match := re.search(r'AHASD Cycle Coupling:\s*([A-Za-z0-9_\-]+)', content):
+                    quality['ahasd_cycle_coupling'] = match.group(1)
+                    results['metrics']['ahasd_cycle_coupling_active'] = (
+                        0 if match.group(1) == 'sidecar_only' else 1
+                    )
+                    if match.group(1) == 'sidecar_only':
+                        add_metric_note(
+                            "AHASD stats are sidecar accounting in this build; throughput uses raw ONNXim completion cycles, not adjusted AHASD cycles."
+                        )
             
             # Parse energy metrics
-            if match := re.search(r'Total Energy:\s*([\d.]+)\s*mJ', content):
-                results['metrics']['energy_mj'] = float(match.group(1))
+            energy_patterns = [
+                (r'Total Energy\s*\(mJ\)\s*:\s*([\d.eE+-]+)', 1.0, 'pim_memory_system_total_energy_mj'),
+                (r'Total Energy\s*:\s*([\d.eE+-]+)\s*mJ', 1.0, 'simulator_total_energy_mj'),
+                (r'Total Energy\s*\(uJ\)\s*:\s*([\d.eE+-]+)', 0.001, 'pim_memory_system_total_energy_uj'),
+            ]
+            for pattern, scale, source in energy_patterns:
+                if match := re.search(pattern, content):
+                    record_energy_mj(float(match.group(1)) * scale, source)
+                    break
             
             if match := re.search(r'Energy Efficiency:\s*([\d.]+)\s*tokens/mJ', content):
                 results['metrics']['energy_efficiency_tokens_per_mj'] = float(match.group(1))
+            elif results['metrics'].get('energy_mj', 0) > 0:
+                results['metrics']['energy_efficiency_tokens_per_mj'] = (
+                    generated_tokens / results['metrics']['energy_mj']
+                )
+                add_metric_note(
+                    "energy_efficiency_tokens_per_mj derived from parsed simulator total energy and generated smoke trace length."
+                )
+
+            if match := re.search(r'Total Power\s*\(watts\)\s*:\s*([\d.eE+-]+)', content):
+                total_power_w = float(match.group(1))
+                results['metrics']['dram_pim_total_power_w'] = total_power_w
+                sim_time_us = results['metrics'].get('simulation_time_us')
+                if sim_time_us:
+                    results['metrics']['estimated_energy_mj_from_power_time'] = (
+                        total_power_w * sim_time_us * 1e-3
+                    )
+                    results.setdefault('metric_quality', {})[
+                        'estimated_energy_source'
+                    ] = 'Total Power(watts) multiplied by ONNXim simulation_time_us; not used as canonical energy_mj.'
+                    add_metric_note(
+                        "estimated_energy_mj_from_power_time is diagnostic only and is not used for canonical energy speedups."
+                    )
+
+            if 'energy_mj' not in results['metrics']:
+                add_metric_note(
+                    "No simulator-level Total Energy(mJ/uJ) or Total Energy: ... mJ line was found; canonical energy_mj is missing."
+                )
             
             # Parse draft statistics
             if match := re.search(r'Total Drafts Generated:\s*(\d+)', content):
