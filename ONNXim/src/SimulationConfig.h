@@ -75,7 +75,13 @@ struct SimulationConfig {
   bool enable_edc = true;
   bool enable_tvc = true;
   bool enable_aau = true;
+  bool enable_ssrc = false;
+  bool enable_ssrc_proxy = false;
+  bool enable_ssrc_trace = false;
   uint32_t max_draft_length = 16;
+  uint64_t ssrc_state_bytes_per_token = 524288;
+  uint64_t ssrc_resident_limit_bytes = 33554432;
+  float ssrc_confidence_threshold = 0.55f;
 
   /*
    * This map stores the partition information: <partition_id, core_id>

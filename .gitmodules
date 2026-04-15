@@ -1,0 +1,12 @@
+[submodule "ONNXim/extern/booksim"]
+	path = ONNXim/extern/booksim
+	url = https://github.com/PSAL-POSTECH/booksim.git
+[submodule "ONNXim/extern/ramulator2"]
+	path = ONNXim/extern/ramulator2
+	url = https://github.com/PSAL-POSTECH/ramulator2.git
+[submodule "ONNXim/extern/protobuf"]
+	path = ONNXim/extern/protobuf
+	url = https://github.com/protocolbuffers/protobuf.git
+[submodule "ONNXim/extern/onnx"]
+	path = ONNXim/extern/onnx
+	url = https://github.com/onnx/onnx.git
