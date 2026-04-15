@@ -13,6 +13,9 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/extern)
 
 # C++ setttings
 set(CMAKE_CXX_STANDARD 20)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=0)
+endif()
 set(ONNX_ML 1)
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(EXECUTABLE_OUTPUT_PATH "${CMAKE_SOURCE_DIR}/build/bin")

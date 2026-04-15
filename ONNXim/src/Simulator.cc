@@ -91,6 +91,8 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
     ahasd_config.ssrc_state_bytes_per_token = _config.ssrc_state_bytes_per_token;
     ahasd_config.ssrc_resident_limit_bytes = _config.ssrc_resident_limit_bytes;
     ahasd_config.ssrc_confidence_threshold = _config.ssrc_confidence_threshold;
+    ahasd_config.dram_req_size = _config.dram_req_size;
+    ahasd_config.dram_latency = _config.dram_latency;
     _ahasd = std::make_unique<AHASD::AHASDIntegration>(ahasd_config);
     spdlog::info("[AHASD] Enabled - EDC:{} TVC:{} AAU:{} SSRC:{} Proxy:{} Trace:{}",
                  ahasd_config.enable_edc, ahasd_config.enable_tvc, ahasd_config.enable_aau,
@@ -249,7 +251,7 @@ void Simulator::cycle() {
   
   // Print AHASD statistics
   if (_enable_ahasd && _ahasd) {
-    _ahasd->print_statistics();
+    _ahasd->print_statistics(_core_cycles);
   }
 }
 

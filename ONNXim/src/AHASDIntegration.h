@@ -47,6 +47,8 @@ struct AHASDConfig {
     uint64_t ssrc_state_bytes_per_token;
     uint64_t ssrc_resident_limit_bytes;
     float ssrc_confidence_threshold;
+    uint32_t dram_req_size;
+    uint32_t dram_latency;
     
     AHASDConfig() 
         : enable_edc(true), enable_tvc(true), enable_aau(true),
@@ -55,7 +57,8 @@ struct AHASDConfig {
           max_draft_length(16), min_preverify_length(2),
           ssrc_state_bytes_per_token(524288),
           ssrc_resident_limit_bytes(33554432),
-          ssrc_confidence_threshold(0.55f) {}
+          ssrc_confidence_threshold(0.55f),
+          dram_req_size(32), dram_latency(1) {}
 };
 
 class AHASDIntegration {
@@ -576,7 +579,7 @@ public:
         return total_draft_entropy_ / total_drafts_generated_;
     }
     
-    void print_statistics() const {
+    void print_statistics(uint64_t raw_total_cycles = 0) const {
         spdlog::info("=== AHASD Integration Statistics ===");
         spdlog::info("Total Drafts Generated: {}", total_drafts_generated_);
         spdlog::info("Total Draft Tokens Generated: {}", total_draft_tokens_generated_);
@@ -603,11 +606,58 @@ public:
                 ssrc_actual_materialized_bytes_
                     ? (ssrc_baseline_materialized_bytes_ - ssrc_actual_materialized_bytes_)
                     : 0;
+            const uint64_t modeled_req_bytes = config_.dram_req_size > 0
+                ? config_.dram_req_size
+                : 1;
+            const uint64_t modeled_latency_cycles = config_.dram_latency > 0
+                ? config_.dram_latency
+                : 1;
+            const uint64_t modeled_request_equiv =
+                (avoided + modeled_req_bytes - 1) / modeled_req_bytes;
+            const uint64_t modeled_unclamped_avoided_cycles =
+                modeled_request_equiv * modeled_latency_cycles;
+            const double materialization_avoidance_ratio =
+                ssrc_baseline_materialized_bytes_ > 0
+                    ? static_cast<double>(avoided) /
+                          static_cast<double>(ssrc_baseline_materialized_bytes_)
+                    : 0.0;
+            const uint64_t modeled_upper_bound_avoided_cycles =
+                raw_total_cycles > 0 &&
+                        modeled_unclamped_avoided_cycles > raw_total_cycles
+                    ? raw_total_cycles
+                    : modeled_unclamped_avoided_cycles;
+            const uint64_t modeled_upper_bound_adjusted_cycles =
+                raw_total_cycles > modeled_upper_bound_avoided_cycles
+                    ? raw_total_cycles - modeled_upper_bound_avoided_cycles
+                    : 0;
+            const double modeled_upper_bound_reduction_ratio =
+                raw_total_cycles > 0
+                    ? static_cast<double>(modeled_upper_bound_avoided_cycles) /
+                          static_cast<double>(raw_total_cycles)
+                    : 0.0;
+            const double conservative_reduction_ratio =
+                std::min(modeled_upper_bound_reduction_ratio,
+                         materialization_avoidance_ratio);
+            const uint64_t modeled_avoided_cycles = raw_total_cycles > 0
+                ? static_cast<uint64_t>(
+                      static_cast<long double>(raw_total_cycles) *
+                      conservative_reduction_ratio)
+                : 0;
+            const uint64_t modeled_adjusted_cycles =
+                raw_total_cycles > modeled_avoided_cycles
+                    ? raw_total_cycles - modeled_avoided_cycles
+                    : 0;
+            const double modeled_reduction_ratio = raw_total_cycles > 0
+                ? static_cast<double>(modeled_avoided_cycles) /
+                      static_cast<double>(raw_total_cycles)
+                : 0.0;
 
             spdlog::info("=== SSRC Statistics ===");
             spdlog::info("SSRC Baseline Materialized Bytes: {}", ssrc_baseline_materialized_bytes_);
             spdlog::info("SSRC Actual Materialized Bytes: {}", ssrc_actual_materialized_bytes_);
             spdlog::info("SSRC Avoided Materialization Bytes: {}", avoided);
+            spdlog::info("SSRC Materialization Avoidance Ratio: {:.8f}",
+                         materialization_avoidance_ratio);
             spdlog::info("SSRC Reclaimed Bytes: {}", ssrc_reclaimed_bytes_);
             spdlog::info("SSRC Resident Current Bytes: {}", ssrc_resident_bytes_);
             spdlog::info("SSRC Resident Peak Bytes: {}", ssrc_peak_resident_bytes_);
@@ -616,6 +666,22 @@ public:
             spdlog::info("SSRC Deferred Batches: {}", ssrc_deferred_batches_);
             spdlog::info("SSRC Prefetched Batches: {}", ssrc_prefetched_batches_);
             spdlog::info("SSRC Reclaimed Batches: {}", ssrc_reclaimed_batches_);
+            spdlog::info("SSRC Modeled DRAM Request Size Bytes: {}", modeled_req_bytes);
+            spdlog::info("SSRC Modeled DRAM Latency Cycles: {}", modeled_latency_cycles);
+            spdlog::info("SSRC Modeled DRAM Request Equiv: {}", modeled_request_equiv);
+            spdlog::info("SSRC Raw Total Cycles: {}", raw_total_cycles);
+            spdlog::info("SSRC Modeled Unclamped Avoided Memory Cycles: {}",
+                         modeled_unclamped_avoided_cycles);
+            spdlog::info("SSRC Modeled Upper Bound Avoided Memory Cycles: {}",
+                         modeled_upper_bound_avoided_cycles);
+            spdlog::info("SSRC Modeled Upper Bound Adjusted Cycles: {}",
+                         modeled_upper_bound_adjusted_cycles);
+            spdlog::info("SSRC Modeled Upper Bound Cycle Reduction Ratio: {:.8f}",
+                         modeled_upper_bound_reduction_ratio);
+            spdlog::info("SSRC Modeled Avoided Memory Cycles: {}", modeled_avoided_cycles);
+            spdlog::info("SSRC Modeled Adjusted Cycles: {}", modeled_adjusted_cycles);
+            spdlog::info("SSRC Modeled Cycle Reduction Ratio: {:.8f}", modeled_reduction_ratio);
+            spdlog::info("SSRC Metric Quality: modeled_sidecar_materialization_capped_not_raw_cycle_coupling");
         }
     }
     

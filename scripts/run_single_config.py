@@ -688,11 +688,41 @@ def parse_simulation_log(log_file, config):
                     'deferred_batches': r'SSRC Deferred Batches:\s*(\d+)',
                     'prefetched_batches': r'SSRC Prefetched Batches:\s*(\d+)',
                     'reclaimed_batches': r'SSRC Reclaimed Batches:\s*(\d+)',
+                    'modeled_dram_request_size_bytes': r'SSRC Modeled DRAM Request Size Bytes:\s*(\d+)',
+                    'modeled_dram_latency_cycles': r'SSRC Modeled DRAM Latency Cycles:\s*(\d+)',
+                    'modeled_dram_request_equiv': r'SSRC Modeled DRAM Request Equiv:\s*(\d+)',
+                    'raw_total_cycles': r'SSRC Raw Total Cycles:\s*(\d+)',
+                    'modeled_unclamped_avoided_memory_cycles': r'SSRC Modeled Unclamped Avoided Memory Cycles:\s*(\d+)',
+                    'modeled_upper_bound_avoided_memory_cycles': r'SSRC Modeled Upper Bound Avoided Memory Cycles:\s*(\d+)',
+                    'modeled_upper_bound_adjusted_cycles': r'SSRC Modeled Upper Bound Adjusted Cycles:\s*(\d+)',
+                    'modeled_avoided_memory_cycles': r'SSRC Modeled Avoided Memory Cycles:\s*(\d+)',
+                    'modeled_adjusted_cycles': r'SSRC Modeled Adjusted Cycles:\s*(\d+)',
                 }
                 for key, pattern in ssrc_patterns.items():
                     if match := re.search(pattern, content):
                         results['ssrc_stats'][key] = int(match.group(1))
                         results['metrics'][f'ssrc_{key}'] = int(match.group(1))
+                ssrc_ratio_patterns = {
+                    'materialization_avoidance_ratio': r'SSRC Materialization Avoidance Ratio:\s*([\d.eE+-]+)',
+                    'modeled_upper_bound_cycle_reduction_ratio': r'SSRC Modeled Upper Bound Cycle Reduction Ratio:\s*([\d.eE+-]+)',
+                    'modeled_cycle_reduction_ratio': r'SSRC Modeled Cycle Reduction Ratio:\s*([\d.eE+-]+)',
+                }
+                for key, pattern in ssrc_ratio_patterns.items():
+                    if match := re.search(pattern, content):
+                        value = float(match.group(1))
+                        results['ssrc_stats'][key] = value
+                        results['metrics'][f'ssrc_{key}'] = value
+                if match := re.search(
+                    r'SSRC Metric Quality:\s*([A-Za-z0-9_\-]+)',
+                    content,
+                ):
+                    value = match.group(1)
+                    results['ssrc_stats']['metric_quality'] = value
+                    results['metrics']['ssrc_metric_quality'] = value
+                    results.setdefault('metric_quality', {})['ssrc_metric_quality'] = value
+                    add_metric_note(
+                        "SSRC modeled cycle metrics are sidecar diagnostics and are not raw ONNXim cycle coupling."
+                    )
     
     except Exception as e:
         print(f"    Warning: Error parsing simulation log: {e}")

@@ -55,8 +55,21 @@ METRIC_KEYS = [
     "ssrc_baseline_materialized_bytes",
     "ssrc_actual_materialized_bytes",
     "ssrc_avoided_materialization_bytes",
+    "ssrc_materialization_avoidance_ratio",
     "ssrc_resident_peak_bytes",
     "ssrc_deferred_batches",
+    "ssrc_modeled_dram_request_size_bytes",
+    "ssrc_modeled_dram_latency_cycles",
+    "ssrc_modeled_dram_request_equiv",
+    "ssrc_raw_total_cycles",
+    "ssrc_modeled_unclamped_avoided_memory_cycles",
+    "ssrc_modeled_upper_bound_avoided_memory_cycles",
+    "ssrc_modeled_upper_bound_adjusted_cycles",
+    "ssrc_modeled_upper_bound_cycle_reduction_ratio",
+    "ssrc_modeled_avoided_memory_cycles",
+    "ssrc_modeled_adjusted_cycles",
+    "ssrc_modeled_cycle_reduction_ratio",
+    "ssrc_metric_quality",
 ]
 
 
@@ -325,6 +338,18 @@ def summarize_contract(runs, hardware, dry_run=False):
                 source,
                 "Dry-run outputs only verify command wiring; no SSRC materialization evidence was measured.",
             ),
+            "ssrc_modeled_cycle_reduction_ratio_avg": make_metric_entry(
+                None,
+                "dry_run",
+                source,
+                "Dry-run outputs only verify command wiring; no modeled SSRC cycle evidence was measured.",
+            ),
+            "ssrc_modeled_upper_bound_cycle_reduction_ratio_avg": make_metric_entry(
+                None,
+                "dry_run",
+                source,
+                "Dry-run outputs only verify command wiring; no modeled SSRC upper-bound evidence was measured.",
+            ),
         }
 
     ssrc_candidate = "ahasd_full_ssrc" if any(r["config"] == "ahasd_full_ssrc" for r in runs) else "ahasd_full"
@@ -336,6 +361,8 @@ def summarize_contract(runs, hardware, dry_run=False):
     ablation_energy = collect_ratios(runs, "ahasd_full", "baseline", "energy_efficiency_tokens_per_mj")
 
     ssrc_avoidance = []
+    ssrc_modeled_cycle_reduction = []
+    ssrc_modeled_upper_bound_cycle_reduction = []
     for record in runs:
         if record["config"] != "ahasd_full_ssrc":
             continue
@@ -344,6 +371,12 @@ def summarize_contract(runs, hardware, dry_run=False):
         value = ratio(avoided, baseline)
         if value is not None:
             ssrc_avoidance.append(value)
+        modeled_reduction = metric(record, "ssrc_modeled_cycle_reduction_ratio")
+        if modeled_reduction is not None:
+            ssrc_modeled_cycle_reduction.append(modeled_reduction)
+        upper_bound_reduction = metric(record, "ssrc_modeled_upper_bound_cycle_reduction_ratio")
+        if upper_bound_reduction is not None:
+            ssrc_modeled_upper_bound_cycle_reduction.append(upper_bound_reduction)
 
     def entry_from_values(values, reducer, source, note):
         if not values:
@@ -417,6 +450,18 @@ def summarize_contract(runs, hardware, dry_run=False):
             lambda values: sum(values) / len(values),
             "cycle-accurate ONNXim batch evaluation",
             "Average avoided speculative-state materialization ratio for ahasd_full_ssrc.",
+        ),
+        "ssrc_modeled_cycle_reduction_ratio_avg": entry_from_values(
+            ssrc_modeled_cycle_reduction,
+            lambda values: sum(values) / len(values),
+            "modeled SSRC sidecar cycle proxy",
+            "Average materialization-capped modeled adjusted-cycle reduction ratio; diagnostic only and not a raw ONNXim cycle improvement.",
+        ),
+        "ssrc_modeled_upper_bound_cycle_reduction_ratio_avg": entry_from_values(
+            ssrc_modeled_upper_bound_cycle_reduction,
+            lambda values: sum(values) / len(values),
+            "modeled SSRC sidecar cycle upper bound",
+            "Average unclamped-request model after raw-cycle cap; upper-bound diagnostic only and not a raw ONNXim cycle improvement.",
         ),
     }
 
