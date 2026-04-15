@@ -1,12 +1,49 @@
 #include "BiasAct.h"
 #include "../Model.h"
 
+#include <algorithm>
+#include <cctype>
+#include <stdexcept>
+
 static const std::map<std::string, Opcode> activation_map = {
     {"gelu", Opcode::GELU},
     {"relu", Opcode::COMP},
+    {"silu", Opcode::SWISH},
     {"swish", Opcode::SWISH},
+    {"swiglu", Opcode::SWISH},
     {"softmax", Opcode::SOFTMAX},
 };
+
+static std::string normalize_activation(std::string activation) {
+    activation.erase(
+        activation.begin(),
+        std::find_if(activation.begin(), activation.end(), [](unsigned char ch) {
+            return !std::isspace(ch);
+        }));
+    activation.erase(
+        std::find_if(activation.rbegin(), activation.rend(), [](unsigned char ch) {
+            return !std::isspace(ch);
+        }).base(),
+        activation.end());
+    std::transform(activation.begin(), activation.end(), activation.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return activation;
+}
+
+static Opcode resolve_activation(std::string activation) {
+    std::string normalized = normalize_activation(activation);
+    auto it = activation_map.find(normalized);
+    if (it != activation_map.end()) {
+        return it->second;
+    }
+    if (normalized.find("swiglu") != std::string::npos ||
+        normalized.find("silu") != std::string::npos ||
+        normalized.find("swish") != std::string::npos) {
+        return Opcode::SWISH;
+    }
+    throw std::out_of_range("unsupported BiasAct activation: " + activation);
+}
 
 BiasAct::BiasAct(SimulationConfig config, Model* model,
                onnx::NodeProto& node_proto, uint32_t target_core)
@@ -36,9 +73,10 @@ BiasAct::BiasAct(SimulationConfig config, Model* model,
 BiasAct::BiasAct(SimulationConfig config, Model* model,
                std::string name, std::map<std::string, std::string> &attributes, uint32_t target_core)
     : Operation(config, model, name, attributes, target_core) {
-    _activation = activation_map.at(get_attribute("activation"));
+    _activation = resolve_activation(get_attribute("activation"));
     _use_bias = std::stoi(get_attribute("has_bias"));
-    _llama_mlp = std::stoi(get_attribute("llama_mlp"));
+    auto llama_mlp = _attributes.find("llama_mlp");
+    _llama_mlp = llama_mlp == _attributes.end() ? 0 : std::stoi(llama_mlp->second);
 }
 
 void BiasAct::initialize_tiles(MappingTable& mapping_table) {
@@ -75,9 +113,8 @@ void BiasAct::initialize_instructions(Tile* tile, Mapping mapping, uint32_t toke
     addr_type sram_base = SPAD_BASE;
     addr_type sram_bias_base = sram_base + tokens * _dk * _config.precision;
 
-    addr_type first_addr, second_addr, output_addr;
+    addr_type first_addr, output_addr;
     first_addr = get_operand_addr(_INPUT_OPERAND);
-    second_addr = get_operand_addr(_INPUT_OPERAND+1);
     output_addr = get_operand_addr(_OUTPUT_OPERAND);
     /* Load two tile (input: tokens x _dk, skip: tokens x _dk) */
     std::set<addr_type> dram_addrs;
@@ -88,8 +125,12 @@ void BiasAct::initialize_instructions(Tile* tile, Mapping mapping, uint32_t toke
         dram_output_addrs.insert(output_addr + token_offset*_dk*_config.precision + offset);
     }
 
-    for (int offset=0;offset<_dk*_config.precision; offset+=_config.dram_req_size)
-        dram_skip_addrs.insert(second_addr + _seq*_dk*_config.precision+ offset);
+    if (_use_bias) {
+        addr_type second_addr = get_operand_addr(_INPUT_OPERAND+1);
+        for (int offset=0; offset<_dk*_config.precision; offset+=_config.dram_req_size) {
+            dram_skip_addrs.insert(second_addr + _seq*_dk*_config.precision + offset);
+        }
+    }
 
 
     tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
@@ -100,21 +141,23 @@ void BiasAct::initialize_instructions(Tile* tile, Mapping mapping, uint32_t toke
         .operand_id = _INPUT_OPERAND,  // query
     }));
 
-    tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
-        .opcode = Opcode::MOVIN,
-        .dest_addr = sram_bias_base,
-        .size = (uint32_t)dram_skip_addrs.size(),
-        .src_addrs = std::vector<addr_type>(dram_skip_addrs.begin(), dram_skip_addrs.end()),
-        .operand_id = _INPUT_OPERAND+1,  // query
-    }));
+    if (_use_bias) {
+        tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
+            .opcode = Opcode::MOVIN,
+            .dest_addr = sram_bias_base,
+            .size = (uint32_t)dram_skip_addrs.size(),
+            .src_addrs = std::vector<addr_type>(dram_skip_addrs.begin(), dram_skip_addrs.end()),
+            .operand_id = _INPUT_OPERAND+1,  // bias
+        }));
 
-    tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
-        .opcode = Opcode::ADD,
-        .dest_addr = sram_base,
-        .size = _dk * tokens * _config.precision / _config.dram_req_size,
-        .compute_size = _dk * tokens * _config.precision,
-        .src_addrs = std::vector<addr_type>{sram_base, sram_bias_base},
-    }));
+        tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
+            .opcode = Opcode::ADD,
+            .dest_addr = sram_base,
+            .size = _dk * tokens * _config.precision / _config.dram_req_size,
+            .compute_size = _dk * tokens * _config.precision,
+            .src_addrs = std::vector<addr_type>{sram_base, sram_bias_base},
+        }));
+    }
 
     tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
         .opcode = _activation,

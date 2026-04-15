@@ -296,7 +296,10 @@ void LanguageModel::initialize_model(std::vector<std::unique_ptr<Tensor>>& weigh
     //FeedForward
     std::string ffn_name = name_gen(LAYER(l), BlockType::FeedForward);
     uint32_t ffn1_weight_id = _wgt_map[name_gen(ffn_name, OperationType::FullyConnected1, ParameterType::Weight)];
-    uint32_t ffn1_bias_id = _wgt_map[name_gen(ffn_name, OperationType::FullyConnected1, ParameterType::Bias)];
+    std::string ffn1_bias_name = name_gen(ffn_name, OperationType::FullyConnected1, ParameterType::Bias);
+    auto ffn1_bias_it = _wgt_map.find(ffn1_bias_name);
+    bool ffn1_has_bias = ffn1_bias_it != _wgt_map.end();
+    bias_act_attr["has_bias"] = ffn1_has_bias ? "1" : "0";
     auto ffn1_op = std::make_unique<GemmWS>(
       _config, (Model*) this, name_gen(ffn_name, OperationType::FullyConnected1), ffn1_attr, _target_core);
     ffn1_op->add_input(ln_output_id);
@@ -308,7 +311,9 @@ void LanguageModel::initialize_model(std::vector<std::unique_ptr<Tensor>>& weigh
     std::string act_name = name_gen(LAYER(l), BlockType::FeedForward, OperationType::Act);
     auto act_op = std::make_unique<BiasAct>(_config, (Model*) this, act_name, bias_act_attr, _target_core);
     act_op->add_input(ffn1_output_id);
-    act_op->add_input(ffn1_bias_id);
+    if (ffn1_has_bias) {
+      act_op->add_input(ffn1_bias_it->second);
+    }
     act_op->initialize_tiles(_mapping_table);
     uint32_t act_output_id = act_op->get_output(0)->get_id();
     register_operation(std::move(act_op));
@@ -349,4 +354,3 @@ void LanguageModel::initialize_model(std::vector<std::unique_ptr<Tensor>>& weigh
   std::chrono::duration<double> duration = end - start;
   spdlog::info("{} Model initialization time: {:2f} seconds", _onnx_path, duration.count());
 }
-
