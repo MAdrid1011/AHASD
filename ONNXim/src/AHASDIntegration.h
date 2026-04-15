@@ -4,27 +4,58 @@
 #include "async_queue/AsyncQueue.h"
 #include "async_queue/EDC.h"
 #include "async_queue/TVC.h"
+#include <algorithm>
 #include <memory>
 #include <fstream>
+#include <string>
+#include <unordered_map>
 
 // AHASD Integration Layer
 // Coordinates NPU-side and PIM-side operations for speculative decoding
 
 namespace AHASD {
 
+enum class SSRCDecision {
+    RESIDENT,
+    DEFERRED,
+    PREFETCHED,
+    RECLAIMED
+};
+
+struct SSRCBatchState {
+    uint32_t draft_length;
+    uint64_t state_bytes;
+    bool resident;
+    SSRCDecision decision;
+
+    SSRCBatchState()
+        : draft_length(0), state_bytes(0), resident(false),
+          decision(SSRCDecision::DEFERRED) {}
+};
+
 struct AHASDConfig {
     bool enable_edc;  // Enable Entropy-History-Aware Drafting Control
     bool enable_tvc;  // Enable Time-Aware Pre-Verification Control
     bool enable_aau;  // Enable Attention Algorithm Unit
+    bool enable_ssrc; // Enable Speculative State Residency Control
+    bool enable_ssrc_proxy; // Use a trace-level proxy when draft path is unavailable
+    bool enable_ssrc_trace; // Use language-scheduler events as draft evidence
     float pim_freq_mhz;
     float npu_freq_mhz;
     uint32_t max_draft_length;
     uint32_t min_preverify_length;
+    uint64_t ssrc_state_bytes_per_token;
+    uint64_t ssrc_resident_limit_bytes;
+    float ssrc_confidence_threshold;
     
     AHASDConfig() 
         : enable_edc(true), enable_tvc(true), enable_aau(true),
+          enable_ssrc(false), enable_ssrc_proxy(false), enable_ssrc_trace(false),
           pim_freq_mhz(800.0f), npu_freq_mhz(1000.0f),
-          max_draft_length(16), min_preverify_length(2) {}
+          max_draft_length(16), min_preverify_length(2),
+          ssrc_state_bytes_per_token(524288),
+          ssrc_resident_limit_bytes(33554432),
+          ssrc_confidence_threshold(0.55f) {}
 };
 
 class AHASDIntegration {
@@ -45,10 +76,24 @@ private:
     // Performance statistics
     uint64_t total_drafts_generated_;
     uint64_t total_drafts_accepted_;
+    uint64_t total_draft_tokens_generated_;
     uint64_t total_preverifications_;
     uint64_t total_npu_idle_cycles_;
     uint64_t total_pim_idle_cycles_;
     double total_draft_entropy_;
+
+    // SSRC proxy/accounting statistics
+    std::unordered_map<uint32_t, SSRCBatchState> ssrc_batches_;
+    uint64_t ssrc_baseline_materialized_bytes_;
+    uint64_t ssrc_actual_materialized_bytes_;
+    uint64_t ssrc_reclaimed_bytes_;
+    uint64_t ssrc_resident_bytes_;
+    uint64_t ssrc_peak_resident_bytes_;
+    uint64_t ssrc_committed_bytes_;
+    uint64_t ssrc_deferred_batches_;
+    uint64_t ssrc_prefetched_batches_;
+    uint64_t ssrc_resident_batches_;
+    uint64_t ssrc_reclaimed_batches_;
     
     // Timing
     uint64_t last_verification_start_;
@@ -58,13 +103,145 @@ private:
     std::ofstream trace_file_;
     bool enable_tracing_;
 
+    float clamp01(float value) const {
+        return std::max(0.0f, std::min(1.0f, value));
+    }
+
+    uint64_t estimate_state_bytes(uint32_t draft_length) const {
+        return static_cast<uint64_t>(draft_length) * config_.ssrc_state_bytes_per_token;
+    }
+
+    std::string decision_to_string(SSRCDecision decision) const {
+        switch (decision) {
+            case SSRCDecision::RESIDENT:
+                return "resident";
+            case SSRCDecision::DEFERRED:
+                return "deferred";
+            case SSRCDecision::PREFETCHED:
+                return "prefetched";
+            case SSRCDecision::RECLAIMED:
+                return "reclaimed";
+        }
+        return "unknown";
+    }
+
+    void account_ssrc_submit(const DraftBatch& batch, float avg_entropy) {
+        if (!config_.enable_ssrc && !config_.enable_ssrc_proxy &&
+            !config_.enable_ssrc_trace) {
+            return;
+        }
+
+        uint64_t state_bytes = estimate_state_bytes(batch.draft_length);
+        ssrc_baseline_materialized_bytes_ += state_bytes;
+
+        if (!config_.enable_ssrc) {
+            SSRCBatchState state;
+            state.draft_length = batch.draft_length;
+            state.state_bytes = state_bytes;
+            state.decision = SSRCDecision::RESIDENT;
+            state.resident = true;
+            ssrc_actual_materialized_bytes_ += state_bytes;
+            ssrc_resident_bytes_ += state_bytes;
+            ssrc_peak_resident_bytes_ = std::max(ssrc_peak_resident_bytes_,
+                                                 ssrc_resident_bytes_);
+            ssrc_resident_batches_++;
+            ssrc_batches_[batch.batch_id] = state;
+            return;
+        }
+
+        float confidence = clamp01(1.0f - (avg_entropy / 10.0f));
+        float queue_pressure = clamp01(static_cast<float>(queue_manager_->get_unverified_count()) /
+                                       std::max(1u, config_.max_draft_length));
+        float residency_pressure = clamp01(
+            static_cast<float>(ssrc_resident_bytes_ + state_bytes) /
+            static_cast<float>(std::max<uint64_t>(1ULL, config_.ssrc_resident_limit_bytes)));
+        float tvc_slack_proxy = config_.enable_tvc ? clamp01(1.0f - queue_pressure) : 0.0f;
+
+        SSRCDecision decision = SSRCDecision::RESIDENT;
+        if (residency_pressure > 0.95f) {
+            decision = SSRCDecision::RECLAIMED;
+        } else if (confidence < config_.ssrc_confidence_threshold ||
+                   residency_pressure > 0.80f) {
+            decision = SSRCDecision::DEFERRED;
+        } else if (tvc_slack_proxy > 0.50f) {
+            decision = SSRCDecision::PREFETCHED;
+        }
+
+        SSRCBatchState state;
+        state.draft_length = batch.draft_length;
+        state.state_bytes = state_bytes;
+        state.decision = decision;
+        state.resident = (decision == SSRCDecision::RESIDENT ||
+                          decision == SSRCDecision::PREFETCHED);
+
+        if (state.resident) {
+            ssrc_actual_materialized_bytes_ += state_bytes;
+            ssrc_resident_bytes_ += state_bytes;
+            ssrc_peak_resident_bytes_ = std::max(ssrc_peak_resident_bytes_,
+                                                 ssrc_resident_bytes_);
+            if (decision == SSRCDecision::PREFETCHED) {
+                ssrc_prefetched_batches_++;
+            } else {
+                ssrc_resident_batches_++;
+            }
+        } else if (decision == SSRCDecision::RECLAIMED) {
+            ssrc_reclaimed_batches_++;
+        } else {
+            ssrc_deferred_batches_++;
+        }
+
+        ssrc_batches_[batch.batch_id] = state;
+
+        if (enable_tracing_) {
+            trace_file_ << batch.timestamp << ",ssrc_decision," << batch.batch_id
+                       << "," << batch.draft_length << "," << avg_entropy
+                       << "," << decision_to_string(decision) << "\n";
+        }
+    }
+
+    void account_ssrc_verify(uint32_t batch_id, uint32_t accepted_length) {
+        if (!config_.enable_ssrc && !config_.enable_ssrc_proxy &&
+            !config_.enable_ssrc_trace) {
+            return;
+        }
+
+        auto it = ssrc_batches_.find(batch_id);
+        if (it == ssrc_batches_.end()) {
+            return;
+        }
+
+        const SSRCBatchState state = it->second;
+        uint32_t accepted = std::min(accepted_length, state.draft_length);
+        uint64_t accepted_bytes = estimate_state_bytes(accepted);
+
+        if (state.resident) {
+            ssrc_resident_bytes_ = (ssrc_resident_bytes_ > state.state_bytes)
+                ? (ssrc_resident_bytes_ - state.state_bytes) : 0;
+            if (state.state_bytes > accepted_bytes) {
+                ssrc_reclaimed_bytes_ += (state.state_bytes - accepted_bytes);
+            }
+        } else if (accepted_bytes > 0) {
+            // Deferred materialization pays only for the accepted prefix.
+            ssrc_actual_materialized_bytes_ += accepted_bytes;
+        }
+
+        ssrc_committed_bytes_ += accepted_bytes;
+        ssrc_batches_.erase(it);
+    }
+
 public:
     AHASDIntegration(const AHASDConfig& config = AHASDConfig())
         : config_(config), current_kv_length_(0), current_batch_id_(0),
           npu_busy_(false), pim_busy_(false),
           total_drafts_generated_(0), total_drafts_accepted_(0),
+          total_draft_tokens_generated_(0),
           total_preverifications_(0), total_npu_idle_cycles_(0),
           total_pim_idle_cycles_(0), total_draft_entropy_(0.0),
+          ssrc_baseline_materialized_bytes_(0), ssrc_actual_materialized_bytes_(0),
+          ssrc_reclaimed_bytes_(0), ssrc_resident_bytes_(0),
+          ssrc_peak_resident_bytes_(0), ssrc_committed_bytes_(0),
+          ssrc_deferred_batches_(0), ssrc_prefetched_batches_(0),
+          ssrc_resident_batches_(0), ssrc_reclaimed_batches_(0),
           last_verification_start_(0), last_drafting_start_(0),
           enable_tracing_(false) {
         
@@ -120,6 +297,8 @@ public:
         bool success = queue_manager_->push_draft(batch);
         if (success) {
             total_drafts_generated_++;
+            total_draft_tokens_generated_ += batch.draft_length;
+            account_ssrc_submit(batch, avg_entropy);
             
             if (enable_tracing_) {
                 trace_file_ << cycle << ",draft_generated," << batch.batch_id 
@@ -129,6 +308,104 @@ public:
         }
         
         return success;
+    }
+
+    void submit_proxy_draft(uint64_t cycle) {
+        if (!config_.enable_ssrc_proxy) {
+            return;
+        }
+
+        uint32_t span = std::max(1u, std::min(config_.max_draft_length, 8u));
+        uint32_t draft_length = 1 + (current_batch_id_ % span);
+        float avg_entropy = 1.5f + static_cast<float>(current_batch_id_ % 5) * 0.7f;
+
+        if (!should_continue_drafting(avg_entropy) &&
+            queue_manager_->get_unverified_count() >= config_.min_preverify_length) {
+            return;
+        }
+
+        std::vector<int32_t> tokens;
+        std::vector<float> entropies;
+        tokens.reserve(draft_length);
+        entropies.reserve(draft_length);
+        for (uint32_t i = 0; i < draft_length; i++) {
+            tokens.push_back(static_cast<int32_t>(current_batch_id_ * 100 + i));
+            entropies.push_back(avg_entropy);
+        }
+
+        if (submit_draft_batch(tokens, entropies, cycle)) {
+            record_pim_drafting(
+                std::max<uint64_t>(1ULL, static_cast<uint64_t>(draft_length) * 8ULL),
+                draft_length);
+        }
+    }
+
+    void submit_proxy_verification(uint64_t cycle) {
+        if (!config_.enable_ssrc_proxy) {
+            return;
+        }
+
+        DraftBatch batch;
+        if (!get_next_draft(batch)) {
+            return;
+        }
+
+        uint32_t rejected = (batch.batch_id % 3 == 0 && batch.draft_length > 1) ? 1 : 0;
+        uint32_t accepted_length = batch.draft_length - rejected;
+        bool fully_accepted = (accepted_length == batch.draft_length);
+        uint64_t verification_cycles = std::max<uint64_t>(
+            1ULL, static_cast<uint64_t>(batch.draft_length) * 12ULL);
+
+        start_npu_verification(cycle);
+        submit_verification_result(batch.batch_id, accepted_length, fully_accepted,
+                                   verification_cycles,
+                                   current_kv_length_ + accepted_length);
+        finish_npu_verification();
+    }
+
+    bool submit_trace_verified_draft(uint32_t draft_length,
+                                     uint32_t accepted_length,
+                                     uint32_t kv_length,
+                                     uint64_t cycle,
+                                     float avg_entropy) {
+        if (!config_.enable_ssrc_trace || draft_length == 0) {
+            return false;
+        }
+
+        uint32_t bounded_length =
+            std::max(1u, std::min(draft_length, config_.max_draft_length));
+        uint32_t accepted = std::min(accepted_length, bounded_length);
+        std::vector<int32_t> tokens;
+        std::vector<float> entropies;
+        tokens.reserve(bounded_length);
+        entropies.reserve(bounded_length);
+        uint32_t seed = current_batch_id_;
+        for (uint32_t i = 0; i < bounded_length; i++) {
+            tokens.push_back(static_cast<int32_t>(seed * 1000 + i));
+            entropies.push_back(avg_entropy);
+        }
+
+        if (!submit_draft_batch(tokens, entropies, cycle)) {
+            return false;
+        }
+
+        record_pim_drafting(
+            std::max<uint64_t>(1ULL, static_cast<uint64_t>(bounded_length) * 8ULL),
+            bounded_length);
+
+        DraftBatch batch;
+        if (!get_next_draft(batch)) {
+            return false;
+        }
+
+        bool fully_accepted = (accepted == batch.draft_length);
+        uint64_t verification_cycles =
+            std::max<uint64_t>(1ULL, static_cast<uint64_t>(batch.draft_length) * 12ULL);
+        start_npu_verification(cycle);
+        submit_verification_result(batch.batch_id, accepted, fully_accepted,
+                                   verification_cycles, kv_length);
+        finish_npu_verification();
+        return true;
     }
     
     // PIM-side: Check if should continue drafting
@@ -189,6 +466,8 @@ public:
         if (fully_accepted || accepted_length > 0) {
             total_drafts_accepted_ += accepted_length;
         }
+
+        account_ssrc_verify(batch_id, accepted_length);
         
         current_kv_length_ = kv_length;
         
@@ -288,8 +567,8 @@ public:
     
     // Statistics
     double get_acceptance_rate() const {
-        if (total_drafts_generated_ == 0) return 0.0;
-        return static_cast<double>(total_drafts_accepted_) / total_drafts_generated_;
+        if (total_draft_tokens_generated_ == 0) return 0.0;
+        return static_cast<double>(total_drafts_accepted_) / total_draft_tokens_generated_;
     }
     
     double get_average_entropy() const {
@@ -300,6 +579,7 @@ public:
     void print_statistics() const {
         spdlog::info("=== AHASD Integration Statistics ===");
         spdlog::info("Total Drafts Generated: {}", total_drafts_generated_);
+        spdlog::info("Total Draft Tokens Generated: {}", total_draft_tokens_generated_);
         spdlog::info("Total Drafts Accepted: {} ({:.2f}%)", 
                     total_drafts_accepted_, get_acceptance_rate() * 100.0);
         spdlog::info("Total Pre-verifications: {}", total_preverifications_);
@@ -315,6 +595,27 @@ public:
         
         if (config_.enable_tvc && tvc_ != nullptr) {
             tvc_->print_statistics();
+        }
+
+        if (config_.enable_ssrc || config_.enable_ssrc_proxy ||
+            config_.enable_ssrc_trace) {
+            uint64_t avoided = ssrc_baseline_materialized_bytes_ >
+                ssrc_actual_materialized_bytes_
+                    ? (ssrc_baseline_materialized_bytes_ - ssrc_actual_materialized_bytes_)
+                    : 0;
+
+            spdlog::info("=== SSRC Statistics ===");
+            spdlog::info("SSRC Baseline Materialized Bytes: {}", ssrc_baseline_materialized_bytes_);
+            spdlog::info("SSRC Actual Materialized Bytes: {}", ssrc_actual_materialized_bytes_);
+            spdlog::info("SSRC Avoided Materialization Bytes: {}", avoided);
+            spdlog::info("SSRC Reclaimed Bytes: {}", ssrc_reclaimed_bytes_);
+            spdlog::info("SSRC Resident Current Bytes: {}", ssrc_resident_bytes_);
+            spdlog::info("SSRC Resident Peak Bytes: {}", ssrc_peak_resident_bytes_);
+            spdlog::info("SSRC Committed Bytes: {}", ssrc_committed_bytes_);
+            spdlog::info("SSRC Resident Batches: {}", ssrc_resident_batches_);
+            spdlog::info("SSRC Deferred Batches: {}", ssrc_deferred_batches_);
+            spdlog::info("SSRC Prefetched Batches: {}", ssrc_prefetched_batches_);
+            spdlog::info("SSRC Reclaimed Batches: {}", ssrc_reclaimed_batches_);
         }
     }
     
@@ -348,6 +649,17 @@ public:
         current_batch_id_ = 0;
         npu_busy_ = false;
         pim_busy_ = false;
+        ssrc_batches_.clear();
+        ssrc_baseline_materialized_bytes_ = 0;
+        ssrc_actual_materialized_bytes_ = 0;
+        ssrc_reclaimed_bytes_ = 0;
+        ssrc_resident_bytes_ = 0;
+        ssrc_peak_resident_bytes_ = 0;
+        ssrc_committed_bytes_ = 0;
+        ssrc_deferred_batches_ = 0;
+        ssrc_prefetched_batches_ = 0;
+        ssrc_resident_batches_ = 0;
+        ssrc_reclaimed_batches_ = 0;
         
         if (edc_ != nullptr) {
             edc_->reset();
@@ -360,4 +672,3 @@ public:
 };
 
 } // namespace AHASD
-

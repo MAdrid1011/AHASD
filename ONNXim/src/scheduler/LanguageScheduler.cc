@@ -61,6 +61,12 @@ std::unique_ptr<Model> LangScheduler::pop_model() {
   return model;
 }
 
+std::vector<LangStepEvent> LangScheduler::consume_finished_events() {
+  std::vector<LangStepEvent> events = _last_finished_events;
+  _last_finished_events.clear();
+  return events;
+}
+
 void LangScheduler::cycle() {
   _cycle++;
   //Reqeust Queue to Active Requests if active is empty
@@ -87,25 +93,37 @@ void LangScheduler::cycle() {
 }
 
 void LangScheduler::finish_model(uint32_t model_id) {
+  _last_finished_events.clear();
   for(auto req_id : _requests_in_model[model_id]) {
+    auto& request = _active_requests[req_id];
+    LangStepEvent event;
+    event.request_id = req_id;
+    event.prompt_length = request->prompt_length;
+    event.previous_length = request->current_length;
+    event.target_length = request->target_length;
+    event.generated_tokens = 1;
+    event.was_generation_phase = request->gen_phase;
+
     std::vector<uint32_t> new_cache_dim;
-    if(!_active_requests[req_id]->gen_phase) {
-      uint32_t promtp_len = _active_requests[req_id]->prompt_length;
-      _active_requests[req_id]->gen_phase = true;
-      _active_requests[req_id]->current_length += promtp_len + 1;
+    if(!request->gen_phase) {
+      uint32_t promtp_len = request->prompt_length;
+      request->gen_phase = true;
+      request->current_length += promtp_len + 1;
     }
     else {
-      _active_requests[req_id]->current_length += 1;
+      request->current_length += 1;
     }
-    new_cache_dim = {_active_requests[req_id]->current_length, _cache_dim};
+    event.current_length = request->current_length;
+    _last_finished_events.push_back(event);
+    new_cache_dim = {request->current_length, _cache_dim};
     for(uint32_t i = 0; i < _num_sim_layers; i++) {
-        _active_requests[req_id]->key_cache[i]->resize_tensor(new_cache_dim);
-        _active_requests[req_id]->value_cache[i]->resize_tensor(new_cache_dim);
+        request->key_cache[i]->resize_tensor(new_cache_dim);
+        request->value_cache[i]->resize_tensor(new_cache_dim);
     }
-    _active_requests[req_id]->running = false;
-    if(_active_requests[req_id]->current_length >= _active_requests[req_id]->target_length) {
-      _active_requests[req_id]->finish_time = _cycle;
-      spdlog::info("Request {} completed in {} cycles", req_id, _active_requests[req_id]->finish_time - _active_requests[req_id]->start_time);
+    request->running = false;
+    if(request->current_length >= request->target_length) {
+      request->finish_time = _cycle;
+      spdlog::info("Request {} completed in {} cycles", req_id, request->finish_time - request->start_time);
       _active_requests.erase(req_id);
     }
   }

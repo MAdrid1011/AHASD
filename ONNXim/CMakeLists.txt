@@ -17,7 +17,6 @@ set(ONNX_ML 1)
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(EXECUTABLE_OUTPUT_PATH "${CMAKE_SOURCE_DIR}/build/bin")
 set(LIBRARY_OUTPUT_PATH "${CMAKE_SOURCE_DIR}/build/lib")
-add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 message("BINARY DIR ${CMAKE_BINARY_DIR}")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-fsanitize=address)
@@ -59,4 +58,3 @@ target_link_libraries(Simulator_lib ${PROTOBUF_LIB} onnx_proto ${CONAN_LIBS} std
 
 enable_testing()
 add_subdirectory("${PROJECT_SOURCE_DIR}/tests")
-

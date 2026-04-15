@@ -133,6 +133,30 @@ SimulationConfig initialize_config(json config) {
   parsed_config.precision = get_config_value<uint32_t>(config, "precision");
   parsed_config.layout = get_config_value<std::string>(config, "layout");
 
+  /* AHASD config */
+  if (config.contains("enable_ahasd"))
+    parsed_config.enable_ahasd = config["enable_ahasd"];
+  if (config.contains("enable_edc"))
+    parsed_config.enable_edc = config["enable_edc"];
+  if (config.contains("enable_tvc"))
+    parsed_config.enable_tvc = config["enable_tvc"];
+  if (config.contains("enable_aau"))
+    parsed_config.enable_aau = config["enable_aau"];
+  if (config.contains("max_draft_length"))
+    parsed_config.max_draft_length = config["max_draft_length"];
+  if (config.contains("enable_ssrc"))
+    parsed_config.enable_ssrc = config["enable_ssrc"];
+  if (config.contains("enable_ssrc_proxy"))
+    parsed_config.enable_ssrc_proxy = config["enable_ssrc_proxy"];
+  if (config.contains("enable_ssrc_trace"))
+    parsed_config.enable_ssrc_trace = config["enable_ssrc_trace"];
+  if (config.contains("ssrc_state_bytes_per_token"))
+    parsed_config.ssrc_state_bytes_per_token = config["ssrc_state_bytes_per_token"];
+  if (config.contains("ssrc_resident_limit_bytes"))
+    parsed_config.ssrc_resident_limit_bytes = config["ssrc_resident_limit_bytes"];
+  if (config.contains("ssrc_confidence_threshold"))
+    parsed_config.ssrc_confidence_threshold = config["ssrc_confidence_threshold"];
+
   if (config.contains("partition")) {
     for (int i=0; i<parsed_config.num_cores; i++) {
       std::string core_partition = "core_" + std::to_string(i);

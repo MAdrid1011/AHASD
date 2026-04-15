@@ -1,5 +1,6 @@
 #include "Simulator.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -84,9 +85,17 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
     ahasd_config.pim_freq_mhz = _config.dram_freq;  // PIM freq = DRAM freq
     ahasd_config.npu_freq_mhz = _config.core_freq;  // NPU freq = Core freq
     ahasd_config.max_draft_length = _config.max_draft_length;
+    ahasd_config.enable_ssrc = _config.enable_ssrc;
+    ahasd_config.enable_ssrc_proxy = _config.enable_ssrc_proxy;
+    ahasd_config.enable_ssrc_trace = _config.enable_ssrc_trace;
+    ahasd_config.ssrc_state_bytes_per_token = _config.ssrc_state_bytes_per_token;
+    ahasd_config.ssrc_resident_limit_bytes = _config.ssrc_resident_limit_bytes;
+    ahasd_config.ssrc_confidence_threshold = _config.ssrc_confidence_threshold;
     _ahasd = std::make_unique<AHASD::AHASDIntegration>(ahasd_config);
-    spdlog::info("[AHASD] Enabled - EDC:{} TVC:{} AAU:{}", 
-                 ahasd_config.enable_edc, ahasd_config.enable_tvc, ahasd_config.enable_aau);
+    spdlog::info("[AHASD] Enabled - EDC:{} TVC:{} AAU:{} SSRC:{} Proxy:{} Trace:{}",
+                 ahasd_config.enable_edc, ahasd_config.enable_tvc, ahasd_config.enable_aau,
+                 ahasd_config.enable_ssrc, ahasd_config.enable_ssrc_proxy,
+                 ahasd_config.enable_ssrc_trace);
   }
   
   /* Create heap */
@@ -104,6 +113,10 @@ void Simulator::handle_model() {
     if(_lang_scheduler->can_schedule_model()) {
       _models.push_back(_lang_scheduler->pop_model());
       std::push_heap(_models.begin(), _models.end(), CompareModel());
+      if (_enable_ahasd && _ahasd && _config.enable_ssrc_proxy &&
+          !_config.enable_ssrc_trace) {
+        _ahasd->submit_proxy_draft(_core_cycles);
+      }
     }
   }
   while (!_models.empty() && _models.front()->get_request_time() <= _core_time) {
@@ -259,6 +272,33 @@ void Simulator::register_language_model(json info, std::unique_ptr<LanguageModel
 
 void Simulator::finish_language_model(uint32_t model_id) {
   _lang_scheduler->finish_model(model_id);
+  if (_enable_ahasd && _ahasd && _config.enable_ssrc_trace) {
+    auto events = _lang_scheduler->consume_finished_events();
+    for (const auto& event : events) {
+      if (!event.was_generation_phase) {
+        continue;
+      }
+      uint32_t remaining = event.target_length > event.previous_length
+          ? event.target_length - event.previous_length
+          : event.generated_tokens;
+      uint32_t draft_length =
+          std::max(1u, std::min(_config.max_draft_length, remaining));
+      uint32_t accepted_length =
+          std::max(1u, std::min(event.generated_tokens, draft_length));
+      float draft_pressure = std::min(
+          1.0f, static_cast<float>(remaining) /
+                    static_cast<float>(std::max(1u, _config.max_draft_length)));
+      float avg_entropy = 1.2f + 1.5f * draft_pressure +
+                          0.1f * static_cast<float>(event.request_id % 3);
+      _ahasd->submit_trace_verified_draft(draft_length, accepted_length,
+                                          event.current_length, _core_cycles,
+                                          avg_entropy);
+    }
+  }
+  if (_enable_ahasd && _ahasd && _config.enable_ssrc_proxy &&
+      !_config.enable_ssrc_trace) {
+    _ahasd->submit_proxy_verification(_core_cycles);
+  }
 }
 
 bool Simulator::running() {

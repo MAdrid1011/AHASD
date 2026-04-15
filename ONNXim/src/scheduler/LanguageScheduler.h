@@ -1,6 +1,7 @@
 #ifndef LANGUAGE_SCHEDULER_H
 #define LANGUAGE_SCHEDULER_H
 #include <string>
+#include <vector>
 
 #include "../Common.h"
 #include "../models/LanguageModel.h"
@@ -19,6 +20,16 @@ struct LangRequest {
   std::vector<std::unique_ptr<Tensor>> value_cache;
 };
 
+struct LangStepEvent {
+  uint32_t request_id;
+  uint32_t prompt_length;
+  uint32_t previous_length;
+  uint32_t current_length;
+  uint32_t target_length;
+  uint32_t generated_tokens;
+  bool was_generation_phase;
+};
+
 class LangScheduler {
   public:
     static std::unique_ptr<LangScheduler> create(std::string name, std::string path, 
@@ -32,6 +43,7 @@ class LangScheduler {
     bool can_schedule_model();
     virtual std::unique_ptr<Model> pop_model();
     virtual void finish_model(uint32_t model_id);
+    std::vector<LangStepEvent> consume_finished_events();
     virtual void cycle();
     virtual bool busy();
     virtual uint64_t get_kv_memory_size();
@@ -44,6 +56,7 @@ class LangScheduler {
     std::map<uint32_t, std::unique_ptr<LangRequest>> _active_requests;
     std::map<uint32_t, std::vector<uint32_t>> _requests_in_model;
     std::queue<std::unique_ptr<Model>> _model_queue;
+    std::vector<LangStepEvent> _last_finished_events;
     uint64_t _cycle;
 
     uint32_t _num_layers;
