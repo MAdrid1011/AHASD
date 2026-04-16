@@ -120,11 +120,9 @@ $ git submodule update --recursive --init
 ```
 ### Build
 ```
-$ mkdir build && cd build
-$ conan install ..
-$ cmake ..
-$ make -j
+$ ./scripts/build_onnxim.sh
 ```
+This wrapper keeps Conan dependencies aligned with the repository's GNU old-ABI build when `_GLIBCXX_USE_CXX11_ABI=0` is active.
 ### Run Simulator
 ```
 $ cd ..

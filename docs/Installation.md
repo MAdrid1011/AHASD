@@ -111,34 +111,26 @@ git submodule status
 
 ```bash
 cd ONNXim
-mkdir -p build
-cd build
-
-# Configure
-cmake .. \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_STANDARD=17
-
-# Build (use all available cores)
-make -j$(nproc)
+pip3 install "conan<2"
+./scripts/build_onnxim.sh
 
 # Verify build
-ls -lh onnxim_simulator  # Should exist
-./onnxim_simulator --help  # Should show help message
+ls -lh build/bin/Simulator  # Should exist
+./build/bin/Simulator --help  # Should show help message
 ```
 
 ### Build Options
 
 ```bash
 # Debug build (with symbols)
-cmake .. -DCMAKE_BUILD_TYPE=Debug
+CMAKE_BUILD_TYPE=Debug ./scripts/build_onnxim.sh
 
 # With specific compiler
-cmake .. -DCMAKE_CXX_COMPILER=g++-11
+CXX=g++-11 ./scripts/build_onnxim.sh
 
 # Install to custom location
-cmake .. -DCMAKE_INSTALL_PREFIX=/opt/onnxim
-make install
+BUILD_DIR=build/install ./scripts/build_onnxim.sh -DCMAKE_INSTALL_PREFIX=/opt/onnxim
+cmake --install build/install
 ```
 
 ### Troubleshooting ONNXim Build
@@ -164,6 +156,15 @@ make -j$(nproc)
 make install
 export PKG_CONFIG_PATH=$HOME/.local/lib/pkgconfig:$PKG_CONFIG_PATH
 ```
+
+**Issue**: GNU linker errors mentioning `fmt::v10::vformat` or `boost::program_options`
+
+```bash
+cd ONNXim
+./scripts/build_onnxim.sh
+```
+
+This wrapper installs Conan dependencies with `compiler.libcxx=libstdc++` when the repository's GNU old-ABI build is active, matching `_GLIBCXX_USE_CXX11_ABI=0` in `CMakeLists.txt`.
 
 ## 🏗️ Build PIMSimulator
 
@@ -377,4 +378,3 @@ After successful installation:
 ---
 
 **Installation Time**: ~15-30 minutes (depending on system)
-

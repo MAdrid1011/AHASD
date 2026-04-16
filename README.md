@@ -65,8 +65,8 @@ AHASD integrates three platforms:
 
 ```bash
 
-# Build ONNXim
-cd ONNXim && mkdir build && cd build && cmake .. && make -j8
+# Build ONNXim (requires Conan 1.x: pip3 install "conan<2")
+cd ONNXim && ./scripts/build_onnxim.sh
 
 # Build PIMSimulator  
 cd ../../PIMSimulator && scons -j8

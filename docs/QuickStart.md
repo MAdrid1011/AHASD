@@ -18,15 +18,15 @@ sudo apt-get update
 sudo apt-get install -y g++ cmake scons python3 python3-pip
 
 # Python packages
-pip3 install numpy matplotlib pandas
+pip3 install numpy matplotlib pandas "conan<2"
 ```
 
 ### 3. Build Simulators
 
 ```bash
 # Build simulators
-cd ONNXim && mkdir build && cd build
-cmake .. && make -j8
+cd ONNXim
+./scripts/build_onnxim.sh
 
 cd ../../PIMSimulator
 scons -j8
@@ -268,4 +268,3 @@ chmod +x scripts/*.sh scripts/*.py
 ---
 
 **Need Help?** Open an issue on [GitHub](https://github.com/yourusername/AHASD/issues) or check the [FAQ](FAQ.md).
-

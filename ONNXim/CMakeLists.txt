@@ -9,6 +9,7 @@ conan_basic_setup()
 # find_package(Boost 1.70 REQUIRED COMPONENTS program_options)
 # message("LIB ${Boost_LIBRARY_DIRS}")
 option(USE_RAMULATOR "USE_RAMULATOR" ON)
+option(BUILD_ONNXIM_TESTS "Build ONNXim unit tests" OFF)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/extern)
 
 # C++ setttings
@@ -59,5 +60,7 @@ target_include_directories(Simulator_lib PUBLIC ${ONNX_INCLUDE_DIRS})
 target_link_libraries(Simulator_lib ramulator1 booksim2 ramulator)
 target_link_libraries(Simulator_lib ${PROTOBUF_LIB} onnx_proto ${CONAN_LIBS} stdc++fs)
 
-enable_testing()
-add_subdirectory("${PROJECT_SOURCE_DIR}/tests")
+if(BUILD_ONNXIM_TESTS)
+    enable_testing()
+    add_subdirectory("${PROJECT_SOURCE_DIR}/tests")
+endif()
