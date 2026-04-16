@@ -97,6 +97,8 @@ private:
     uint64_t ssrc_prefetched_batches_;
     uint64_t ssrc_resident_batches_;
     uint64_t ssrc_reclaimed_batches_;
+    uint64_t ssrc_trace_identity_batches_;
+    uint64_t ssrc_trace_identity_verified_batches_;
     
     // Timing
     uint64_t last_verification_start_;
@@ -245,6 +247,8 @@ public:
           ssrc_peak_resident_bytes_(0), ssrc_committed_bytes_(0),
           ssrc_deferred_batches_(0), ssrc_prefetched_batches_(0),
           ssrc_resident_batches_(0), ssrc_reclaimed_batches_(0),
+          ssrc_trace_identity_batches_(0),
+          ssrc_trace_identity_verified_batches_(0),
           last_verification_start_(0), last_drafting_start_(0),
           enable_tracing_(false) {
         
@@ -277,7 +281,12 @@ public:
     // PIM-side: Generate draft
     bool submit_draft_batch(const std::vector<int32_t>& tokens,
                            const std::vector<float>& entropies,
-                           uint64_t cycle) {
+                           uint64_t cycle,
+                           bool trace_identity_valid = false,
+                           uint32_t trace_request_id = 0,
+                           uint32_t trace_previous_length = 0,
+                           uint32_t trace_current_length = 0,
+                           uint32_t trace_target_length = 0) {
         DraftBatch batch;
         batch.batch_id = current_batch_id_++;
         batch.draft_length = tokens.size();
@@ -286,6 +295,11 @@ public:
         batch.timestamp = cycle;
         batch.verified = false;
         batch.accepted = false;
+        batch.trace_identity_valid = trace_identity_valid;
+        batch.trace_request_id = trace_request_id;
+        batch.trace_previous_length = trace_previous_length;
+        batch.trace_current_length = trace_current_length;
+        batch.trace_target_length = trace_target_length;
         
         // Calculate average entropy
         float avg_entropy = 0.0f;
@@ -301,6 +315,9 @@ public:
         if (success) {
             total_drafts_generated_++;
             total_draft_tokens_generated_ += batch.draft_length;
+            if (batch.trace_identity_valid) {
+                ssrc_trace_identity_batches_++;
+            }
             account_ssrc_submit(batch, avg_entropy);
             
             if (enable_tracing_) {
@@ -368,7 +385,10 @@ public:
 
     bool submit_trace_verified_draft(uint32_t draft_length,
                                      uint32_t accepted_length,
-                                     uint32_t kv_length,
+                                     uint32_t request_id,
+                                     uint32_t previous_length,
+                                     uint32_t current_length,
+                                     uint32_t target_length,
                                      uint64_t cycle,
                                      float avg_entropy) {
         if (!config_.enable_ssrc_trace || draft_length == 0) {
@@ -388,7 +408,9 @@ public:
             entropies.push_back(avg_entropy);
         }
 
-        if (!submit_draft_batch(tokens, entropies, cycle)) {
+        if (!submit_draft_batch(tokens, entropies, cycle, true, request_id,
+                                previous_length, current_length,
+                                target_length)) {
             return false;
         }
 
@@ -401,12 +423,15 @@ public:
             return false;
         }
 
+        if (batch.trace_identity_valid) {
+            ssrc_trace_identity_verified_batches_++;
+        }
         bool fully_accepted = (accepted == batch.draft_length);
         uint64_t verification_cycles =
             std::max<uint64_t>(1ULL, static_cast<uint64_t>(batch.draft_length) * 12ULL);
         start_npu_verification(cycle);
         submit_verification_result(batch.batch_id, accepted, fully_accepted,
-                                   verification_cycles, kv_length);
+                                   verification_cycles, current_length);
         finish_npu_verification();
         return true;
     }
@@ -666,6 +691,12 @@ public:
             spdlog::info("SSRC Deferred Batches: {}", ssrc_deferred_batches_);
             spdlog::info("SSRC Prefetched Batches: {}", ssrc_prefetched_batches_);
             spdlog::info("SSRC Reclaimed Batches: {}", ssrc_reclaimed_batches_);
+            spdlog::info("SSRC Trace Identity Active: {}",
+                         ssrc_trace_identity_batches_ > 0 ? 1 : 0);
+            spdlog::info("SSRC Trace Identity Batches: {}",
+                         ssrc_trace_identity_batches_);
+            spdlog::info("SSRC Trace Identity Verified Batches: {}",
+                         ssrc_trace_identity_verified_batches_);
             spdlog::info("SSRC Modeled DRAM Request Size Bytes: {}", modeled_req_bytes);
             spdlog::info("SSRC Modeled DRAM Latency Cycles: {}", modeled_latency_cycles);
             spdlog::info("SSRC Modeled DRAM Request Equiv: {}", modeled_request_equiv);
@@ -726,6 +757,8 @@ public:
         ssrc_prefetched_batches_ = 0;
         ssrc_resident_batches_ = 0;
         ssrc_reclaimed_batches_ = 0;
+        ssrc_trace_identity_batches_ = 0;
+        ssrc_trace_identity_verified_batches_ = 0;
         
         if (edc_ != nullptr) {
             edc_->reset();

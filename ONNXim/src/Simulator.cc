@@ -318,7 +318,10 @@ void Simulator::finish_language_model(uint32_t model_id) {
       float avg_entropy = 1.2f + 1.5f * draft_pressure +
                           0.1f * static_cast<float>(event.request_id % 3);
       _ahasd->submit_trace_verified_draft(draft_length, accepted_length,
-                                          event.current_length, _core_cycles,
+                                          event.request_id,
+                                          event.previous_length,
+                                          event.current_length,
+                                          event.target_length, _core_cycles,
                                           avg_entropy);
     }
   }
