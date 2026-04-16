@@ -756,6 +756,40 @@ def parse_simulation_log(log_file, config):
                 add_metric_note(
                     "request_identity_* metrics are attribution diagnostics derived from SSRC request-tag summary lines."
                 )
+
+            if 'ssrc_stats' in results and 'request_identity_stats' in results:
+                avoided_materialization_bytes = results['ssrc_stats'].get('avoided_materialization_bytes')
+                tagged_write_bytes = results['request_identity_stats'].get('tagged_write_bytes')
+                if isinstance(avoided_materialization_bytes, int) and isinstance(tagged_write_bytes, int):
+                    overlap_upper_bound_bytes = min(
+                        avoided_materialization_bytes,
+                        tagged_write_bytes,
+                    )
+                    overlap_stats = {
+                        'upper_bound_bytes': overlap_upper_bound_bytes,
+                        'coverage_gap_bytes': abs(
+                            avoided_materialization_bytes - tagged_write_bytes
+                        ),
+                        'upper_bound_vs_avoided_ratio': (
+                            float(overlap_upper_bound_bytes) / float(avoided_materialization_bytes)
+                            if avoided_materialization_bytes > 0
+                            else 0.0
+                        ),
+                        'upper_bound_vs_tagged_write_ratio': (
+                            float(overlap_upper_bound_bytes) / float(tagged_write_bytes)
+                            if tagged_write_bytes > 0
+                            else 0.0
+                        ),
+                    }
+                    results['ssrc_request_overlap_stats'] = overlap_stats
+                    for key, value in overlap_stats.items():
+                        results['metrics'][f'ssrc_request_overlap_{key}'] = value
+
+                    add_metric_note(
+                        "ssrc_request_overlap_* metrics are derived attribution bounds from "
+                        "ssrc_avoided_materialization_bytes and request_identity_tagged_write_bytes; "
+                        "they are upper-bound overlap diagnostics, not exact per-request intersections."
+                    )
     
     except Exception as e:
         print(f"    Warning: Error parsing simulation log: {e}")
