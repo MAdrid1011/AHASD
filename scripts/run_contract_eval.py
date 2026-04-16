@@ -70,6 +70,10 @@ METRIC_KEYS = [
     "ssrc_modeled_adjusted_cycles",
     "ssrc_modeled_cycle_reduction_ratio",
     "ssrc_metric_quality",
+    "ssrc_request_overlap_upper_bound_bytes",
+    "ssrc_request_overlap_coverage_gap_bytes",
+    "ssrc_request_overlap_upper_bound_vs_avoided_ratio",
+    "ssrc_request_overlap_upper_bound_vs_tagged_write_ratio",
 ]
 
 
