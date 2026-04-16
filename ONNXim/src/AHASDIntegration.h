@@ -26,11 +26,17 @@ struct SSRCBatchState {
     uint32_t draft_length;
     uint64_t state_bytes;
     bool resident;
+    bool trace_identity_valid;
     SSRCDecision decision;
+    float queue_pressure;
+    float residency_pressure;
+    float tvc_slack_proxy;
 
     SSRCBatchState()
         : draft_length(0), state_bytes(0), resident(false),
-          decision(SSRCDecision::DEFERRED) {}
+          trace_identity_valid(false), decision(SSRCDecision::DEFERRED),
+          queue_pressure(0.0f), residency_pressure(0.0f),
+          tvc_slack_proxy(0.0f) {}
 };
 
 struct AHASDConfig {
@@ -99,6 +105,14 @@ private:
     uint64_t ssrc_reclaimed_batches_;
     uint64_t ssrc_trace_identity_batches_;
     uint64_t ssrc_trace_identity_verified_batches_;
+    uint64_t ssrc_trace_semantic_resident_batches_;
+    uint64_t ssrc_trace_semantic_deferred_batches_;
+    uint64_t ssrc_trace_semantic_prefetched_batches_;
+    uint64_t ssrc_trace_semantic_reclaimed_batches_;
+    uint64_t ssrc_trace_semantic_accepted_bytes_;
+    double ssrc_trace_semantic_queue_pressure_sum_;
+    double ssrc_trace_semantic_residency_pressure_sum_;
+    double ssrc_trace_semantic_tvc_slack_sum_;
     
     // Timing
     uint64_t last_verification_start_;
@@ -130,6 +144,31 @@ private:
         return "unknown";
     }
 
+    void record_trace_semantic_submit(const SSRCBatchState& state) {
+        if (!state.trace_identity_valid) {
+            return;
+        }
+
+        ssrc_trace_semantic_queue_pressure_sum_ += state.queue_pressure;
+        ssrc_trace_semantic_residency_pressure_sum_ += state.residency_pressure;
+        ssrc_trace_semantic_tvc_slack_sum_ += state.tvc_slack_proxy;
+
+        switch (state.decision) {
+            case SSRCDecision::RESIDENT:
+                ssrc_trace_semantic_resident_batches_++;
+                break;
+            case SSRCDecision::DEFERRED:
+                ssrc_trace_semantic_deferred_batches_++;
+                break;
+            case SSRCDecision::PREFETCHED:
+                ssrc_trace_semantic_prefetched_batches_++;
+                break;
+            case SSRCDecision::RECLAIMED:
+                ssrc_trace_semantic_reclaimed_batches_++;
+                break;
+        }
+    }
+
     void account_ssrc_submit(const DraftBatch& batch, float avg_entropy) {
         if (!config_.enable_ssrc && !config_.enable_ssrc_proxy &&
             !config_.enable_ssrc_trace) {
@@ -138,6 +177,12 @@ private:
 
         uint64_t state_bytes = estimate_state_bytes(batch.draft_length);
         ssrc_baseline_materialized_bytes_ += state_bytes;
+        float queue_pressure = clamp01(static_cast<float>(queue_manager_->get_unverified_count()) /
+                                       std::max(1u, config_.max_draft_length));
+        float residency_pressure = clamp01(
+            static_cast<float>(ssrc_resident_bytes_ + state_bytes) /
+            static_cast<float>(std::max<uint64_t>(1ULL, config_.ssrc_resident_limit_bytes)));
+        float tvc_slack_proxy = config_.enable_tvc ? clamp01(1.0f - queue_pressure) : 0.0f;
 
         if (!config_.enable_ssrc) {
             SSRCBatchState state;
@@ -145,22 +190,21 @@ private:
             state.state_bytes = state_bytes;
             state.decision = SSRCDecision::RESIDENT;
             state.resident = true;
+            state.trace_identity_valid = batch.trace_identity_valid;
+            state.queue_pressure = queue_pressure;
+            state.residency_pressure = residency_pressure;
+            state.tvc_slack_proxy = tvc_slack_proxy;
             ssrc_actual_materialized_bytes_ += state_bytes;
             ssrc_resident_bytes_ += state_bytes;
             ssrc_peak_resident_bytes_ = std::max(ssrc_peak_resident_bytes_,
                                                  ssrc_resident_bytes_);
             ssrc_resident_batches_++;
             ssrc_batches_[batch.batch_id] = state;
+            record_trace_semantic_submit(state);
             return;
         }
 
         float confidence = clamp01(1.0f - (avg_entropy / 10.0f));
-        float queue_pressure = clamp01(static_cast<float>(queue_manager_->get_unverified_count()) /
-                                       std::max(1u, config_.max_draft_length));
-        float residency_pressure = clamp01(
-            static_cast<float>(ssrc_resident_bytes_ + state_bytes) /
-            static_cast<float>(std::max<uint64_t>(1ULL, config_.ssrc_resident_limit_bytes)));
-        float tvc_slack_proxy = config_.enable_tvc ? clamp01(1.0f - queue_pressure) : 0.0f;
 
         SSRCDecision decision = SSRCDecision::RESIDENT;
         if (residency_pressure > 0.95f) {
@@ -178,6 +222,10 @@ private:
         state.decision = decision;
         state.resident = (decision == SSRCDecision::RESIDENT ||
                           decision == SSRCDecision::PREFETCHED);
+        state.trace_identity_valid = batch.trace_identity_valid;
+        state.queue_pressure = queue_pressure;
+        state.residency_pressure = residency_pressure;
+        state.tvc_slack_proxy = tvc_slack_proxy;
 
         if (state.resident) {
             ssrc_actual_materialized_bytes_ += state_bytes;
@@ -196,6 +244,7 @@ private:
         }
 
         ssrc_batches_[batch.batch_id] = state;
+        record_trace_semantic_submit(state);
 
         if (enable_tracing_) {
             trace_file_ << batch.timestamp << ",ssrc_decision," << batch.batch_id
@@ -218,6 +267,9 @@ private:
         const SSRCBatchState state = it->second;
         uint32_t accepted = std::min(accepted_length, state.draft_length);
         uint64_t accepted_bytes = estimate_state_bytes(accepted);
+        if (state.trace_identity_valid) {
+            ssrc_trace_semantic_accepted_bytes_ += accepted_bytes;
+        }
 
         if (state.resident) {
             ssrc_resident_bytes_ = (ssrc_resident_bytes_ > state.state_bytes)
@@ -249,6 +301,14 @@ public:
           ssrc_resident_batches_(0), ssrc_reclaimed_batches_(0),
           ssrc_trace_identity_batches_(0),
           ssrc_trace_identity_verified_batches_(0),
+          ssrc_trace_semantic_resident_batches_(0),
+          ssrc_trace_semantic_deferred_batches_(0),
+          ssrc_trace_semantic_prefetched_batches_(0),
+          ssrc_trace_semantic_reclaimed_batches_(0),
+          ssrc_trace_semantic_accepted_bytes_(0),
+          ssrc_trace_semantic_queue_pressure_sum_(0.0),
+          ssrc_trace_semantic_residency_pressure_sum_(0.0),
+          ssrc_trace_semantic_tvc_slack_sum_(0.0),
           last_verification_start_(0), last_drafting_start_(0),
           enable_tracing_(false) {
         
@@ -697,6 +757,39 @@ public:
                          ssrc_trace_identity_batches_);
             spdlog::info("SSRC Trace Identity Verified Batches: {}",
                          ssrc_trace_identity_verified_batches_);
+            double trace_semantic_avg_queue_pressure =
+                ssrc_trace_identity_batches_ > 0
+                    ? (ssrc_trace_semantic_queue_pressure_sum_ /
+                       static_cast<double>(ssrc_trace_identity_batches_))
+                    : 0.0;
+            double trace_semantic_avg_residency_pressure =
+                ssrc_trace_identity_batches_ > 0
+                    ? (ssrc_trace_semantic_residency_pressure_sum_ /
+                       static_cast<double>(ssrc_trace_identity_batches_))
+                    : 0.0;
+            double trace_semantic_avg_tvc_slack =
+                ssrc_trace_identity_batches_ > 0
+                    ? (ssrc_trace_semantic_tvc_slack_sum_ /
+                       static_cast<double>(ssrc_trace_identity_batches_))
+                    : 0.0;
+            spdlog::info("SSRC Trace Semantic Active: {}",
+                         ssrc_trace_identity_batches_ > 0 ? 1 : 0);
+            spdlog::info("SSRC Trace Semantic Resident Batches: {}",
+                         ssrc_trace_semantic_resident_batches_);
+            spdlog::info("SSRC Trace Semantic Deferred Batches: {}",
+                         ssrc_trace_semantic_deferred_batches_);
+            spdlog::info("SSRC Trace Semantic Prefetched Batches: {}",
+                         ssrc_trace_semantic_prefetched_batches_);
+            spdlog::info("SSRC Trace Semantic Reclaimed Batches: {}",
+                         ssrc_trace_semantic_reclaimed_batches_);
+            spdlog::info("SSRC Trace Semantic Accepted Bytes: {}",
+                         ssrc_trace_semantic_accepted_bytes_);
+            spdlog::info("SSRC Trace Semantic Avg Queue Pressure: {:.8f}",
+                         trace_semantic_avg_queue_pressure);
+            spdlog::info("SSRC Trace Semantic Avg Residency Pressure: {:.8f}",
+                         trace_semantic_avg_residency_pressure);
+            spdlog::info("SSRC Trace Semantic Avg TVC Slack Proxy: {:.8f}",
+                         trace_semantic_avg_tvc_slack);
             spdlog::info("SSRC Modeled DRAM Request Size Bytes: {}", modeled_req_bytes);
             spdlog::info("SSRC Modeled DRAM Latency Cycles: {}", modeled_latency_cycles);
             spdlog::info("SSRC Modeled DRAM Request Equiv: {}", modeled_request_equiv);
@@ -759,6 +852,14 @@ public:
         ssrc_reclaimed_batches_ = 0;
         ssrc_trace_identity_batches_ = 0;
         ssrc_trace_identity_verified_batches_ = 0;
+        ssrc_trace_semantic_resident_batches_ = 0;
+        ssrc_trace_semantic_deferred_batches_ = 0;
+        ssrc_trace_semantic_prefetched_batches_ = 0;
+        ssrc_trace_semantic_reclaimed_batches_ = 0;
+        ssrc_trace_semantic_accepted_bytes_ = 0;
+        ssrc_trace_semantic_queue_pressure_sum_ = 0.0;
+        ssrc_trace_semantic_residency_pressure_sum_ = 0.0;
+        ssrc_trace_semantic_tvc_slack_sum_ = 0.0;
         
         if (edc_ != nullptr) {
             edc_->reset();

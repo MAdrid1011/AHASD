@@ -757,6 +757,38 @@ def parse_simulation_log(log_file, config):
                     "request_identity_* metrics are attribution diagnostics derived from SSRC request-tag summary lines."
                 )
 
+            trace_semantic_marker = 'SSRC Trace Semantic'
+            if trace_semantic_marker in content:
+                results['trace_semantic_stats'] = {}
+                trace_semantic_patterns = {
+                    'active': r'SSRC Trace Semantic Active:\s*(\d+)',
+                    'resident_batches': r'SSRC Trace Semantic Resident Batches:\s*(\d+)',
+                    'deferred_batches': r'SSRC Trace Semantic Deferred Batches:\s*(\d+)',
+                    'prefetched_batches': r'SSRC Trace Semantic Prefetched Batches:\s*(\d+)',
+                    'reclaimed_batches': r'SSRC Trace Semantic Reclaimed Batches:\s*(\d+)',
+                    'accepted_bytes': r'SSRC Trace Semantic Accepted Bytes:\s*(\d+)',
+                }
+                for key, pattern in trace_semantic_patterns.items():
+                    if match := re.search(pattern, content):
+                        value = int(match.group(1))
+                        results['trace_semantic_stats'][key] = value
+                        results['metrics'][f'trace_semantic_{key}'] = value
+
+                trace_semantic_ratio_patterns = {
+                    'avg_queue_pressure': r'SSRC Trace Semantic Avg Queue Pressure:\s*([\d.eE+-]+)',
+                    'avg_residency_pressure': r'SSRC Trace Semantic Avg Residency Pressure:\s*([\d.eE+-]+)',
+                    'avg_tvc_slack_proxy': r'SSRC Trace Semantic Avg TVC Slack Proxy:\s*([\d.eE+-]+)',
+                }
+                for key, pattern in trace_semantic_ratio_patterns.items():
+                    if match := re.search(pattern, content):
+                        value = float(match.group(1))
+                        results['trace_semantic_stats'][key] = value
+                        results['metrics'][f'trace_semantic_{key}'] = value
+
+                add_metric_note(
+                    "trace_semantic_* metrics are decision-aware observability diagnostics derived from trace-valid SSRC batches."
+                )
+
             if 'ssrc_stats' in results and 'request_identity_stats' in results:
                 avoided_materialization_bytes = results['ssrc_stats'].get('avoided_materialization_bytes')
                 tagged_write_bytes = results['request_identity_stats'].get('tagged_write_bytes')
