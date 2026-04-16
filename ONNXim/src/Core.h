@@ -29,6 +29,18 @@ class Core {
   virtual void print_current_stats();
 
   virtual cycle_type get_compute_cycles() { return _stat_tot_compute_cycle; }
+  virtual uint64_t get_request_identity_tagged_requests() const {
+    return _stat_tot_request_identity_tagged_requests;
+  }
+  virtual uint64_t get_request_identity_tagged_bytes() const {
+    return _stat_tot_request_identity_tagged_bytes;
+  }
+  virtual uint64_t get_request_identity_tagged_read_bytes() const {
+    return _stat_tot_request_identity_tagged_read_bytes;
+  }
+  virtual uint64_t get_request_identity_tagged_write_bytes() const {
+    return _stat_tot_request_identity_tagged_write_bytes;
+  }
 
  protected:
   virtual bool can_issue_compute(std::unique_ptr<Instruction>& inst);
@@ -40,6 +52,10 @@ class Core {
   virtual void handle_st_inst_queue();
   virtual cycle_type calculate_add_tree_iterations(uint32_t vector_size);
   virtual cycle_type calculate_vector_op_iterations(uint32_t vector_size);
+  virtual void accumulate_request_identity_stats(uint64_t request_count,
+                                                 uint64_t size_bytes,
+                                                 bool is_write);
+  virtual void accumulate_request_identity_stats(const Instruction& inst);
 
   const uint32_t _id;
   const SimulationConfig _config;
@@ -70,6 +86,10 @@ class Core {
   cycle_type _stat_tot_systolic_active_cycle = 0;
   double _stat_matmul_cycle = 0;
   double _stat_tot_matmul_cycle = 0;
+  uint64_t _stat_tot_request_identity_tagged_requests = 0;
+  uint64_t _stat_tot_request_identity_tagged_bytes = 0;
+  uint64_t _stat_tot_request_identity_tagged_read_bytes = 0;
+  uint64_t _stat_tot_request_identity_tagged_write_bytes = 0;
 
   int _running_layer;
   uint32_t tile_rr = 0;

@@ -525,6 +525,11 @@ def run_simulation(config, output_dir, verbose=False, dry_run=False):
             f.write("\nSSRC Statistics:\n")
             for key, value in results['ssrc_stats'].items():
                 f.write(f"- {key.replace('_', ' ').title()}: {value}\n")
+
+        if 'request_identity_stats' in results:
+            f.write("\nRequest Identity Statistics:\n")
+            for key, value in results['request_identity_stats'].items():
+                f.write(f"- {key.replace('_', ' ').title()}: {value}\n")
     
     print(f"\n  ✓ Simulation completed successfully")
     print(f"  Results saved to: {output_dir}")
@@ -723,6 +728,34 @@ def parse_simulation_log(log_file, config):
                     add_metric_note(
                         "SSRC modeled cycle metrics are sidecar diagnostics and are not raw ONNXim cycle coupling."
                     )
+
+            request_identity_marker = 'SSRC Request Identity'
+            if request_identity_marker in content:
+                results['request_identity_stats'] = {}
+                request_identity_patterns = {
+                    'bridge_active': r'SSRC Request Identity Bridge Active:\s*(\d+)',
+                    'tagged_requests': r'SSRC Request Identity Tagged Requests:\s*(\d+)',
+                    'tagged_bytes': r'SSRC Request Identity Tagged Bytes:\s*(\d+)',
+                    'tagged_read_bytes': r'SSRC Request Identity Tagged Read Bytes:\s*(\d+)',
+                    'tagged_write_bytes': r'SSRC Request Identity Tagged Write Bytes:\s*(\d+)',
+                }
+                for key, pattern in request_identity_patterns.items():
+                    if match := re.search(pattern, content):
+                        value = int(match.group(1))
+                        results['request_identity_stats'][key] = value
+                        results['metrics'][f'request_identity_{key}'] = value
+
+                if match := re.search(
+                    r'SSRC Request Identity Tagged Class:\s*([A-Za-z0-9_\-]+)',
+                    content,
+                ):
+                    tagged_class = match.group(1)
+                    results['request_identity_stats']['tagged_class'] = tagged_class
+                    results['metrics']['request_identity_tagged_class'] = tagged_class
+
+                add_metric_note(
+                    "request_identity_* metrics are attribution diagnostics derived from SSRC request-tag summary lines."
+                )
     
     except Exception as e:
         print(f"    Warning: Error parsing simulation log: {e}")

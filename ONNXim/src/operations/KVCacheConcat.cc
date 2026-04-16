@@ -1,5 +1,6 @@
 #include "KVCacheConcat.h"
 #include "../Model.h"
+#include "../models/LanguageModel.h"
 // const scalar_t* __restrict__ q,       // [num_seqs, num_heads, head_size]
 // const cache_t* __restrict__ k_cache,  // [num_blocks, num_kv_heads,
 //                                       // head_size/x, block_size, x]
@@ -85,10 +86,18 @@ void KVCacheConcat::calculate_loops() {
 
 void KVCacheConcat::initialize_instructions(Tile* tile, uint32_t idx) {
   uint32_t per_token_size = _config.precision * ( _cache_dim * 2 + _hidden_size);
+  auto* language_model = dynamic_cast<LanguageModel*>(_model);
+  if (language_model == nullptr) {
+    throw std::runtime_error("KVCacheConcat requires LanguageModel for request identity metadata");
+  }
   std::set<addr_type> movin_addresses;
   std::set<addr_type> query_out_address;
   std::vector<std::set<addr_type>> key_out_addresses;
   std::vector<std::set<addr_type>> value_out_addresses;
+  std::vector<uint32_t> request_ids(_num_batches, INVALID_REQUEST_ID);
+  for (uint32_t batch = 0; batch < _num_batches; batch++) {
+    request_ids[batch] = language_model->get_request_id(batch);
+  }
   key_out_addresses.resize(_num_batches);
   value_out_addresses.resize(_num_batches);
 
@@ -144,7 +153,9 @@ void KVCacheConcat::initialize_instructions(Tile* tile, uint32_t idx) {
       .dest_addr = SPAD_BASE,
       .size = (uint32_t)key_out_addresses[batch].size(),
       .src_addrs = std::vector<addr_type>(key_out_addresses[batch].begin(), key_out_addresses[batch].end()),
-      .operand_id = _OUTPUT_OPERAND
+      .operand_id = _OUTPUT_OPERAND,
+      .request_id = request_ids[batch],
+      .request_identity_tagged = true
     }));
   }
   for(int batch = 0; batch < _num_batches; batch++){
@@ -153,7 +164,9 @@ void KVCacheConcat::initialize_instructions(Tile* tile, uint32_t idx) {
       .dest_addr = SPAD_BASE,
       .size = (uint32_t)value_out_addresses[batch].size(),
       .src_addrs = std::vector<addr_type>(value_out_addresses[batch].begin(), value_out_addresses[batch].end()),
-      .operand_id = _OUTPUT_OPERAND
+      .operand_id = _OUTPUT_OPERAND,
+      .request_id = request_ids[batch],
+      .request_identity_tagged = true
     }));
   }
 }

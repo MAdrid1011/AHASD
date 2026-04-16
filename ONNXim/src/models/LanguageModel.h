@@ -46,6 +46,7 @@ class LanguageModel : public Model {
 
   uint32_t load_key_cache(uint32_t layer, uint32_t batch);
   uint32_t load_value_cache(uint32_t layer, uint32_t batch);
+  uint32_t get_request_id(uint32_t batch) const { return _reqs.at(batch).request_id; }
   
   void log_model();
   uint64_t get_weight_size() { return _wgt_size; }

@@ -241,6 +241,27 @@ void Simulator::cycle() {
     spdlog::info("AHASD Metric Scope: sidecar_accounting");
     spdlog::info("AHASD Cycle Coupling: sidecar_only");
   }
+  uint64_t request_identity_tagged_requests = 0;
+  uint64_t request_identity_tagged_bytes = 0;
+  uint64_t request_identity_tagged_read_bytes = 0;
+  uint64_t request_identity_tagged_write_bytes = 0;
+  for (int core_id = 0; core_id < _n_cores; core_id++) {
+    request_identity_tagged_requests += _cores[core_id]->get_request_identity_tagged_requests();
+    request_identity_tagged_bytes += _cores[core_id]->get_request_identity_tagged_bytes();
+    request_identity_tagged_read_bytes += _cores[core_id]->get_request_identity_tagged_read_bytes();
+    request_identity_tagged_write_bytes += _cores[core_id]->get_request_identity_tagged_write_bytes();
+  }
+  spdlog::info("SSRC Request Identity Bridge Active: {}",
+               request_identity_tagged_requests > 0 ? 1 : 0);
+  spdlog::info("SSRC Request Identity Tagged Requests: {}",
+               request_identity_tagged_requests);
+  spdlog::info("SSRC Request Identity Tagged Bytes: {}",
+               request_identity_tagged_bytes);
+  spdlog::info("SSRC Request Identity Tagged Read Bytes: {}",
+               request_identity_tagged_read_bytes);
+  spdlog::info("SSRC Request Identity Tagged Write Bytes: {}",
+               request_identity_tagged_write_bytes);
+  spdlog::info("SSRC Request Identity Tagged Class: kv_cache_write");
   
   /* Print simulation stats */
   for (int core_id = 0; core_id < _n_cores; core_id++) {

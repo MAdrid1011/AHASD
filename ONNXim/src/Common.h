@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <limits>
 #include <queue>
 #include <string>
 #include <vector>
@@ -31,6 +32,7 @@ using json = nlohmann::json;
 
 typedef uint64_t addr_type;
 typedef uint64_t cycle_type;
+static constexpr uint32_t INVALID_REQUEST_ID = std::numeric_limits<uint32_t>::max();
 
 typedef struct {
   uint32_t id;
@@ -44,6 +46,9 @@ typedef struct {
   cycle_type dram_enter_cycle;
   cycle_type dram_finish_cycle;
   int buffer_id;
+  uint32_t request_id = INVALID_REQUEST_ID;
+  uint32_t operand_id = 0;
+  bool request_identity_tagged = false;
 } MemoryAccess;
 
 enum class Opcode {
@@ -82,6 +87,8 @@ typedef struct {
   int spad_id;
   int accum_spad_id;
   uint32_t operand_id  = 0;
+  uint32_t request_id = INVALID_REQUEST_ID;
+  bool request_identity_tagged = false;
   addr_type base_addr;
 
   uint32_t tile_m;

@@ -33,6 +33,35 @@ bool Core::can_issue(bool is_accum_tile) {
   return _tiles.size() < 2;  // double buffer
 }
 
+void Core::accumulate_request_identity_stats(uint64_t request_count,
+                                             uint64_t size_bytes,
+                                             bool is_write) {
+  if (request_count == 0 || size_bytes == 0) {
+    return;
+  }
+  _stat_tot_request_identity_tagged_requests += request_count;
+  _stat_tot_request_identity_tagged_bytes += size_bytes;
+  if (is_write) {
+    _stat_tot_request_identity_tagged_write_bytes += size_bytes;
+  } else {
+    _stat_tot_request_identity_tagged_read_bytes += size_bytes;
+  }
+}
+
+void Core::accumulate_request_identity_stats(const Instruction& inst) {
+  if (!inst.request_identity_tagged) {
+    return;
+  }
+  const uint64_t request_count = inst.size;
+  const uint64_t size_bytes =
+      static_cast<uint64_t>(inst.size) * _config.dram_req_size;
+  if (inst.opcode == Opcode::MOVOUT || inst.opcode == Opcode::MOVOUT_POOL) {
+    accumulate_request_identity_stats(request_count, size_bytes, true);
+  } else if (inst.opcode == Opcode::MOVIN) {
+    accumulate_request_identity_stats(request_count, size_bytes, false);
+  }
+}
+
 void Core::issue(std::unique_ptr<Tile> op) {
   op->stat = {.start_cycle = _core_cycle,
              .cycles = 0,
@@ -63,6 +92,9 @@ void Core::issue(std::unique_ptr<Tile> op) {
   op->accum_spad_id = acc_spad_id;
   op->status = Tile::Status::RUNNING;
   if (op->skip) {
+    for (const auto& inst : op->instructions) {
+      accumulate_request_identity_stats(*inst);
+    }
     op->status = Tile::Status::FINISH;
     _finished_tiles.push(std::move(op));
     return;
@@ -351,7 +383,13 @@ void Core::handle_ld_inst_queue() {
                               .request = true,
                               .core_id = _id,
                               .start_cycle = _core_cycle,
-                              .buffer_id = buffer_id});
+                              .buffer_id = buffer_id,
+                              .request_id = front->request_id,
+                              .operand_id = front->operand_id,
+                              .request_identity_tagged = front->request_identity_tagged});
+        if (access->request_identity_tagged) {
+          accumulate_request_identity_stats(1, access->size, false);
+        }
         _request_queue.push(access);
       }
       _ld_inst_queue.pop();
@@ -386,7 +424,13 @@ void Core::handle_st_inst_queue() {
                               .request = true,
                               .core_id = _id,
                               .start_cycle = _core_cycle,
-                              .buffer_id = buffer_id};
+                              .buffer_id = buffer_id,
+                              .request_id = front->request_id,
+                              .operand_id = front->operand_id,
+                              .request_identity_tagged = front->request_identity_tagged};
+          if (access->request_identity_tagged) {
+            accumulate_request_identity_stats(1, access->size, true);
+          }
           _waiting_write_reqs++;
           _request_queue.push(access);
         }
