@@ -767,6 +767,12 @@ def parse_simulation_log(log_file, config):
                     'prefetched_batches': r'SSRC Trace Semantic Prefetched Batches:\s*(\d+)',
                     'reclaimed_batches': r'SSRC Trace Semantic Reclaimed Batches:\s*(\d+)',
                     'accepted_bytes': r'SSRC Trace Semantic Accepted Bytes:\s*(\d+)',
+                    'total_state_bytes': r'SSRC Trace Semantic Total State Bytes:\s*(\d+)',
+                    'resident_state_bytes': r'SSRC Trace Semantic Resident State Bytes:\s*(\d+)',
+                    'deferred_state_bytes': r'SSRC Trace Semantic Deferred State Bytes:\s*(\d+)',
+                    'prefetched_state_bytes': r'SSRC Trace Semantic Prefetched State Bytes:\s*(\d+)',
+                    'reclaimed_state_bytes': r'SSRC Trace Semantic Reclaimed State Bytes:\s*(\d+)',
+                    'unique_requests': r'SSRC Trace Semantic Unique Requests:\s*(\d+)',
                 }
                 for key, pattern in trace_semantic_patterns.items():
                     if match := re.search(pattern, content):
@@ -778,6 +784,9 @@ def parse_simulation_log(log_file, config):
                     'avg_queue_pressure': r'SSRC Trace Semantic Avg Queue Pressure:\s*([\d.eE+-]+)',
                     'avg_residency_pressure': r'SSRC Trace Semantic Avg Residency Pressure:\s*([\d.eE+-]+)',
                     'avg_tvc_slack_proxy': r'SSRC Trace Semantic Avg TVC Slack Proxy:\s*([\d.eE+-]+)',
+                    'avg_previous_length': r'SSRC Trace Semantic Avg Previous Length:\s*([\d.eE+-]+)',
+                    'avg_current_length': r'SSRC Trace Semantic Avg Current Length:\s*([\d.eE+-]+)',
+                    'avg_target_length': r'SSRC Trace Semantic Avg Target Length:\s*([\d.eE+-]+)',
                 }
                 for key, pattern in trace_semantic_ratio_patterns.items():
                     if match := re.search(pattern, content):
