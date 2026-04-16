@@ -245,12 +245,24 @@ void Simulator::cycle() {
   uint64_t request_identity_tagged_bytes = 0;
   uint64_t request_identity_tagged_read_bytes = 0;
   uint64_t request_identity_tagged_write_bytes = 0;
+  uint64_t suppressed_tagged_write_requests = 0;
+  uint64_t suppressed_tagged_write_bytes = 0;
   for (int core_id = 0; core_id < _n_cores; core_id++) {
     request_identity_tagged_requests += _cores[core_id]->get_request_identity_tagged_requests();
     request_identity_tagged_bytes += _cores[core_id]->get_request_identity_tagged_bytes();
     request_identity_tagged_read_bytes += _cores[core_id]->get_request_identity_tagged_read_bytes();
     request_identity_tagged_write_bytes += _cores[core_id]->get_request_identity_tagged_write_bytes();
+    suppressed_tagged_write_requests +=
+        _cores[core_id]->get_suppressed_tagged_write_requests();
+    suppressed_tagged_write_bytes +=
+        _cores[core_id]->get_suppressed_tagged_write_bytes();
   }
+  spdlog::info("SSRC Tagged Write Hook Active: {}",
+               _config.enable_ssrc_tagged_write_hook ? 1 : 0);
+  spdlog::info("SSRC Tagged Write Hook Suppressed Requests: {}",
+               suppressed_tagged_write_requests);
+  spdlog::info("SSRC Tagged Write Hook Suppressed Bytes: {}",
+               suppressed_tagged_write_bytes);
   spdlog::info("SSRC Request Identity Bridge Active: {}",
                request_identity_tagged_requests > 0 ? 1 : 0);
   spdlog::info("SSRC Request Identity Tagged Requests: {}",

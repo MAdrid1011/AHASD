@@ -41,6 +41,12 @@ class Core {
   virtual uint64_t get_request_identity_tagged_write_bytes() const {
     return _stat_tot_request_identity_tagged_write_bytes;
   }
+  virtual uint64_t get_suppressed_tagged_write_requests() const {
+    return _stat_tot_suppressed_tagged_write_requests;
+  }
+  virtual uint64_t get_suppressed_tagged_write_bytes() const {
+    return _stat_tot_suppressed_tagged_write_bytes;
+  }
 
  protected:
   virtual bool can_issue_compute(std::unique_ptr<Instruction>& inst);
@@ -90,6 +96,8 @@ class Core {
   uint64_t _stat_tot_request_identity_tagged_bytes = 0;
   uint64_t _stat_tot_request_identity_tagged_read_bytes = 0;
   uint64_t _stat_tot_request_identity_tagged_write_bytes = 0;
+  uint64_t _stat_tot_suppressed_tagged_write_requests = 0;
+  uint64_t _stat_tot_suppressed_tagged_write_bytes = 0;
 
   int _running_layer;
   uint32_t tile_rr = 0;

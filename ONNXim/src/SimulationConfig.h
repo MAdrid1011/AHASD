@@ -78,6 +78,7 @@ struct SimulationConfig {
   bool enable_ssrc = false;
   bool enable_ssrc_proxy = false;
   bool enable_ssrc_trace = false;
+  bool enable_ssrc_tagged_write_hook = false;
   uint32_t max_draft_length = 16;
   uint64_t ssrc_state_bytes_per_token = 524288;
   uint64_t ssrc_resident_limit_bytes = 33554432;

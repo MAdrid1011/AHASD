@@ -428,6 +428,13 @@ void Core::handle_st_inst_queue() {
                               .request_id = front->request_id,
                               .operand_id = front->operand_id,
                               .request_identity_tagged = front->request_identity_tagged};
+          if (_config.enable_ssrc_tagged_write_hook &&
+              access->request_identity_tagged) {
+            _stat_tot_suppressed_tagged_write_requests++;
+            _stat_tot_suppressed_tagged_write_bytes += access->size;
+            delete access;
+            continue;
+          }
           if (access->request_identity_tagged) {
             accumulate_request_identity_stats(1, access->size, true);
           }

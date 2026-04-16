@@ -150,6 +150,9 @@ SimulationConfig initialize_config(json config) {
     parsed_config.enable_ssrc_proxy = config["enable_ssrc_proxy"];
   if (config.contains("enable_ssrc_trace"))
     parsed_config.enable_ssrc_trace = config["enable_ssrc_trace"];
+  if (config.contains("enable_ssrc_tagged_write_hook"))
+    parsed_config.enable_ssrc_tagged_write_hook =
+        config["enable_ssrc_tagged_write_hook"];
   if (config.contains("ssrc_state_bytes_per_token"))
     parsed_config.ssrc_state_bytes_per_token = config["ssrc_state_bytes_per_token"];
   if (config.contains("ssrc_resident_limit_bytes"))

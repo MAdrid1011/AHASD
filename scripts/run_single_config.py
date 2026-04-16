@@ -130,6 +130,8 @@ def parse_args():
                        help='Enable trace-level proxy draft events for SSRC accounting')
     parser.add_argument('--enable-ssrc-trace', action='store_true',
                        help='Enable language-scheduler-driven draft events for SSRC accounting')
+    parser.add_argument('--enable-ssrc-tagged-write-hook', action='store_true',
+                       help='Suppress request-tagged write-side memory requests at the ONNXim timing path for smoke validation')
     parser.add_argument('--ssrc-state-bytes-per-token', type=int, default=524288,
                        help='Estimated speculative KV/state bytes per token')
     parser.add_argument('--ssrc-resident-limit-mb', type=float, default=32.0,
@@ -197,6 +199,7 @@ def create_config(args):
                 or args.enable_ssrc
                 or args.enable_ssrc_proxy
                 or args.enable_ssrc_trace
+                or args.enable_ssrc_tagged_write_hook
             ),
             "enable_edc": args.enable_edc,
             "enable_tvc": args.enable_tvc,
@@ -204,6 +207,7 @@ def create_config(args):
             "enable_ssrc": args.enable_ssrc,
             "enable_ssrc_proxy": args.enable_ssrc_proxy,
             "enable_ssrc_trace": args.enable_ssrc_trace,
+            "enable_ssrc_tagged_write_hook": args.enable_ssrc_tagged_write_hook,
             "ssrc_state_bytes_per_token": args.ssrc_state_bytes_per_token,
             "ssrc_resident_limit_bytes": int(args.ssrc_resident_limit_mb * 1024 * 1024),
             "ssrc_confidence_threshold": args.ssrc_confidence_threshold,
@@ -317,6 +321,7 @@ def create_onnxim_config(config, onnxim_root, output_dir):
     onnxim_config['enable_ssrc'] = ahasd_config['enable_ssrc']
     onnxim_config['enable_ssrc_proxy'] = ahasd_config['enable_ssrc_proxy']
     onnxim_config['enable_ssrc_trace'] = ahasd_config['enable_ssrc_trace']
+    onnxim_config['enable_ssrc_tagged_write_hook'] = ahasd_config['enable_ssrc_tagged_write_hook']
     onnxim_config['ssrc_state_bytes_per_token'] = ahasd_config['ssrc_state_bytes_per_token']
     onnxim_config['ssrc_resident_limit_bytes'] = ahasd_config['ssrc_resident_limit_bytes']
     onnxim_config['ssrc_confidence_threshold'] = ahasd_config['ssrc_confidence_threshold']
@@ -755,6 +760,24 @@ def parse_simulation_log(log_file, config):
 
                 add_metric_note(
                     "request_identity_* metrics are attribution diagnostics derived from SSRC request-tag summary lines."
+                )
+
+            tagged_write_hook_marker = 'SSRC Tagged Write Hook'
+            if tagged_write_hook_marker in content:
+                results['tagged_write_hook_stats'] = {}
+                tagged_write_hook_patterns = {
+                    'active': r'SSRC Tagged Write Hook Active:\s*(\d+)',
+                    'suppressed_requests': r'SSRC Tagged Write Hook Suppressed Requests:\s*(\d+)',
+                    'suppressed_bytes': r'SSRC Tagged Write Hook Suppressed Bytes:\s*(\d+)',
+                }
+                for key, pattern in tagged_write_hook_patterns.items():
+                    if match := re.search(pattern, content):
+                        value = int(match.group(1))
+                        results['tagged_write_hook_stats'][key] = value
+                        results['metrics'][f'tagged_write_hook_{key}'] = value
+
+                add_metric_note(
+                    "tagged_write_hook_* metrics report how many request-tagged write-side accesses were suppressed by the experimental timing hook."
                 )
     
     except Exception as e:
