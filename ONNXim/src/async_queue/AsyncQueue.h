@@ -25,9 +25,17 @@ struct DraftBatch {
     uint64_t timestamp;
     bool verified;
     bool accepted;
+    bool trace_identity_valid;
+    uint32_t trace_request_id;
+    uint32_t trace_previous_length;
+    uint32_t trace_current_length;
+    uint32_t trace_target_length;
     
     DraftBatch() : batch_id(0), draft_length(0), timestamp(0), 
-                   verified(false), accepted(false) {}
+                   verified(false), accepted(false),
+                   trace_identity_valid(false), trace_request_id(0),
+                   trace_previous_length(0), trace_current_length(0),
+                   trace_target_length(0) {}
 };
 
 struct FeedbackData {
@@ -219,4 +227,3 @@ public:
 };
 
 } // namespace AHASD
-
