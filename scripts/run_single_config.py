@@ -618,6 +618,29 @@ def parse_simulation_log(log_file, config):
                 if match := re.search(pattern, content):
                     record_energy_mj(float(match.group(1)) * scale, source)
                     break
+
+            # B2.4 — breakdown sub-fields printed by EnergyModel::print. These
+            # are best-effort: absent (e.g. old logs) ⇒ silently skipped so
+            # existing runs keep parsing cleanly.
+            breakdown_patterns = {
+                'energy_npu_compute_mj': r'NPU compute:\s*([\d.eE+-]+)\s*mJ',
+                'energy_npu_systolic_mj': r'NPU compute:.*?systolic=([\d.eE+-]+)',
+                'energy_npu_vector_mj': r'NPU compute:.*?vector=([\d.eE+-]+)',
+                'energy_npu_idle_mj': r'NPU compute:.*?idle=([\d.eE+-]+)',
+                'energy_pim_access_mj': r'PIM access:\s*([\d.eE+-]+)\s*mJ',
+                'energy_pim_read_mj': r'PIM access:.*?read=([\d.eE+-]+)',
+                'energy_pim_write_mj': r'PIM access:.*?write=([\d.eE+-]+)',
+                'energy_pim_leak_mj': r'PIM access:.*?leak=([\d.eE+-]+)',
+                'energy_bus_mj': r'Off-chip bus:\s*([\d.eE+-]+)\s*mJ',
+                'energy_gtsu_mj': r'GTSU switches:\s*([\d.eE+-]+)\s*mJ',
+                'energy_aau_savings_mj': r'AAU savings:\s*-?([\d.eE+-]+)\s*mJ',
+            }
+            for key, pat in breakdown_patterns.items():
+                if m := re.search(pat, content):
+                    try:
+                        results['metrics'][key] = float(m.group(1))
+                    except ValueError:
+                        pass
             
             if match := re.search(r'Energy Efficiency:\s*([\d.]+)\s*tokens/mJ', content):
                 results['metrics']['energy_efficiency_tokens_per_mj'] = float(match.group(1))
