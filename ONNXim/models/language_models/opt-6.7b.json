@@ -1,0 +1,15 @@
+{
+  "num_hidden_layers": 32,
+  "hidden_size": 4096,
+  "num_kv_heads": 32,
+  "num_attention_heads": 32,
+  "intermediate_size": 16384,
+  "ffn_type": "opt",
+  "activation_function": "relu",
+  "vocab_size": 50272,
+  "max_seq_length": 2048,
+  "run_single_layer": true,
+  "tensor_parallel_size": 1,
+  "pipeline_parallel_size": 1,
+  "source_note": "Meta OPT-6.7B (Zhang et al., 2022). Used as the target (TLM) of the Small model pair in AHASPro.md Table 1."
+}
