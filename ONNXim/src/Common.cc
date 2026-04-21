@@ -157,6 +157,22 @@ SimulationConfig initialize_config(json config) {
   if (config.contains("ssrc_confidence_threshold"))
     parsed_config.ssrc_confidence_threshold = config["ssrc_confidence_threshold"];
 
+  /* B2.2 — PIM co-simulation config */
+  if (config.contains("pim_enable"))
+    parsed_config.pim_enable = config["pim_enable"];
+  if (config.contains("pim_channel_mask"))
+    parsed_config.pim_channel_mask = config["pim_channel_mask"].get<std::string>();
+  if (config.contains("pim_channel_stride"))
+    parsed_config.pim_channel_stride = config["pim_channel_stride"];
+  if (config.contains("pim_clock_mhz"))
+    parsed_config.pim_clock_mhz = config["pim_clock_mhz"];
+  if (config.contains("pim_enable_aau_fusion"))
+    parsed_config.pim_enable_aau_fusion = config["pim_enable_aau_fusion"];
+  if (config.contains("pim_aau_fusion_ratio"))
+    parsed_config.pim_aau_fusion_ratio = config["pim_aau_fusion_ratio"];
+  if (config.contains("pim_gtsu_switch_ns"))
+    parsed_config.pim_gtsu_switch_ns = config["pim_gtsu_switch_ns"];
+
   if (config.contains("partition")) {
     for (int i=0; i<parsed_config.num_cores; i++) {
       std::string core_partition = "core_" + std::to_string(i);

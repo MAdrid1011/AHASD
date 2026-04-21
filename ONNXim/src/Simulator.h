@@ -8,7 +8,9 @@
 #include "scheduler/Scheduler.h"
 #include "scheduler/LanguageScheduler.h"
 #include "AHASDIntegration.h"
+#include "CoSimDriver.h"
 #include <queue>
+#include <tuple>
 
 #define CORE_MASK 0x1 << 1
 #define DRAM_MASK 0x1 << 2
@@ -18,6 +20,10 @@ class Simulator {
  public:
   Simulator(SimulationConfig config, bool language_mode);
   void register_model(std::unique_ptr<Model> model);
+  // B2.1: register_language_model honours an optional "role" field in `info`:
+  //   absent         -> legacy single-model path (backwards compatible)
+  //   "draft"        -> primary model of a speculative scheduler
+  //   "target"       -> attached to an existing spec scheduler as TLM
   void register_language_model(json info, std::unique_ptr<LanguageModel> model);
   void finish_language_model(uint32_t model_id);
   void run_simulator();
@@ -64,6 +70,14 @@ class Simulator {
   // AHASD integration
   std::unique_ptr<AHASD::AHASDIntegration> _ahasd;
   bool _enable_ahasd;
+
+  // B2.2 — PIM co-simulation driver. Inert unless SimulationConfig::pim_enable.
+  std::unique_ptr<CoSimDriver> _cosim;
+  // Per-channel hold queue: requests routed to a PIM channel that are still
+  // waiting on a GTSU switch or TVC hold are parked here instead of being
+  // handed to the DRAM backend immediately. Entries are (release_npu_cycle,
+  // MemoryAccess*).
+  std::vector<std::queue<std::pair<uint64_t, MemoryAccess*>>> _pim_hold_queues;
 
   // Icnt stat
   uint64_t _nr_from_core=0;
