@@ -1,23 +1,28 @@
 // B2.1 — Speculative decoding scheduler implementation.
+// B2.3 — plugged into AHASDIntegration (EDC/TVC) and PIMBackend (GTSU) so
+//        the DRAFT / PRE_VERIFY / VERIFY cadence actually drives the
+//        architectural decisions rather than being a hardcoded constant.
 //
-// Scope for this milestone:
-//   * Drive the DRAFT (k times) -> VERIFY (1 time) cadence on a pair of
+// In-scope now:
+//   * DRAFT (k times) -> optional PRE_VERIFY -> VERIFY cadence on a pair of
 //     LanguageModel objects (DLM + TLM).
-//   * Route model-finish callbacks back to the request that issued the model
-//     and update its per-round state.
-//   * Provide extension points (pick_draft_length / sample_accepted_length)
-//     that B2.3 (EDC coupling) and B2.5 (synthetic acceptance) will fill in.
+//   * EDC decides k per round; TVC decides whether to insert a PRE_VERIFY.
+//   * GTSU switches on every DRAFT<->VERIFY phase boundary, which feeds
+//     into PIMBackend's per-channel hold queue and therefore into real
+//     wall-cycle progress.
+//   * record_verify_result / record_draft_batch / record_pre_verify feed
+//     elapsed cycles back to TVC and decision outcomes to EDC.
 //
 // Intentionally NOT in scope yet:
-//   * Real KV-cache rollback beyond a length truncation (the resize below is
-//     a placeholder — real rollback including dirty-region management lands
-//     in B2.3 together with AHASD's SSRC path).
-//   * PRE_VERIFY tasks: the state machine reserves the enum value and will be
-//     activated by TVC in B2.3.
-//   * Acceptance driven by entropy: pick_draft_length() returns the
-//     configured max_draft_length for now.
+//   * Real KV-cache rollback beyond a length truncation (real rollback
+//     including dirty-region management belongs to F1 alongside SSRC).
+//   * Acceptance driven by entropy: sample_accepted_length() still uses
+//     the placeholder from B2.1 until B2.5 lands the synthetic sampler.
 
 #include "SpecDecodeScheduler.h"
+
+#include "../AHASDIntegration.h"
+#include "../PIMBackend.h"
 
 #include <algorithm>
 
@@ -51,12 +56,47 @@ bool SpecDecodeScheduler::attach_target_model(std::unique_ptr<LanguageModel> tar
   return true;
 }
 
+void SpecDecodeScheduler::attach_ahasd(AHASD::AHASDIntegration* ahasd,
+                                        PIMBackend* pim) {
+  _ahasd = ahasd;
+  _pim = pim;
+  spdlog::info("[SpecDecode] AHASD attached: edc={} tvc={} ; PIM attached={}",
+               (_ahasd != nullptr) && _ahasd->config().enable_edc,
+               (_ahasd != nullptr) && _ahasd->config().enable_tvc,
+               (_pim != nullptr) && _pim->is_active());
+}
+
+float SpecDecodeScheduler::compute_entropy_hint(const LangRequest& req) const {
+  // Synthetic entropy in the [0, H_MAX=10] range expected by EDC.
+  // B2.5 will replace this with the trace-driven sampler output.
+  //
+  // Heuristic: (a) early in a request (current_length near prompt_length) we
+  // seed mid entropy (~3) so EDC explores; (b) as we approach target_length,
+  // entropy rises (harder to predict the last tokens); (c) per-round the
+  // spec_round modulo adds a small jitter so consecutive rounds do not
+  // collapse to identical PHT indices.
+  uint32_t progress = req.current_length > req.prompt_length
+                          ? req.current_length - req.prompt_length
+                          : 0u;
+  uint32_t span = req.target_length > req.prompt_length
+                      ? req.target_length - req.prompt_length
+                      : 1u;
+  float ratio = std::min(1.0f, static_cast<float>(progress) /
+                                    static_cast<float>(std::max(1u, span)));
+  float base = 2.5f + 2.5f * ratio;               // 2.5 → 5.0 across request lifetime
+  float jitter = 0.5f * static_cast<float>(req.spec_round % 4);  // 0.0 / 0.5 / 1.0 / 1.5
+  return std::min(9.5f, std::max(0.5f, base + jitter));
+}
+
 uint32_t SpecDecodeScheduler::pick_draft_length(const LangRequest& req) {
-  // B2.3 will override this with EDC::decide(draft_length_limit, entropy_hist).
   uint32_t remaining =
       req.target_length > req.current_length ? req.target_length - req.current_length : 0u;
-  uint32_t k = std::min<uint32_t>(_default_draft_length, std::max<uint32_t>(1u, remaining));
-  return std::min<uint32_t>(k, _max_draft_length);
+  uint32_t cap = std::min<uint32_t>(_max_draft_length, std::max<uint32_t>(1u, remaining));
+  if (_ahasd != nullptr && _ahasd->config().enable_edc) {
+    return _ahasd->decide_draft_length(cap, compute_entropy_hint(req));
+  }
+  uint32_t k = std::min<uint32_t>(_default_draft_length, cap);
+  return std::max<uint32_t>(1u, k);
 }
 
 uint32_t SpecDecodeScheduler::sample_accepted_length(const LangRequest& req,
@@ -109,21 +149,40 @@ std::unique_ptr<Model> SpecDecodeScheduler::build_model(LanguageModel& model,
 }
 
 bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
-  // Only one outstanding model per request at a time to keep accounting simple;
-  // B2.3 will lift this restriction once EDC can overlap DLM/TLM queues.
-  if (_requests_in_model.find(req.request_id) != _requests_in_model.end()) {
-    return false;  // already has an in-flight model for this request
+  // Only one outstanding model per request at a time to keep accounting simple.
+  // B2.3 — previously this used `_requests_in_model.find(req.request_id)`,
+  // which is wrong because `_requests_in_model` is keyed by model_id, not
+  // request_id. That bug caused the scheduler to issue a fresh task every
+  // cycle for the same request, filling the Simulator queue with hundreds of
+  // duplicate TLM inferences. `req.running` is the correct per-request
+  // outstanding-model flag (set when we issue, cleared in finish_model).
+  if (req.running) {
+    return false;
   }
+
+  // B2.3 — request a GTSU rank-mode switch on the PIM channels when we are
+  // about to issue a task whose rank-mode differs from the current one.
+  // Rank mode 0 = DLM (draft weights), 1 = TLM (target weights). The GTSU
+  // request parks subsequent pushes to PIM channels until the switch
+  // completes, which is the real cycle-coupling mechanism.
+  auto request_rank_switch = [&](uint32_t desired_mode) {
+    if (_pim == nullptr || !_pim->is_active()) return;
+    auto it = _last_rank_mode.find(req.request_id);
+    uint32_t current = (it == _last_rank_mode.end()) ? 0u : it->second;
+    if (current == desired_mode) return;
+    _pim->switch_all_pim_to(desired_mode, _cycle);
+    _last_rank_mode[req.request_id] = desired_mode;
+  };
 
   switch (req.spec_phase) {
     case LangSpecPhase::PROMPT_PENDING: {
-      // Target-model prefill; emit one PROMPT task.
+      request_rank_switch(1);  // PROMPT runs on TLM.
       LanguageModel& model = _target_attached ? *_target_model : *_language_model;
       auto infer_model = build_model(model, req, LangTaskType::PROMPT, req.prompt_length);
       uint32_t mid = infer_model->get_id();
       _model_meta[mid] = {req.request_id, LangTaskType::PROMPT,
                           _target_attached ? "target" : "single",
-                          0, 0};
+                          0, 0, _cycle};
       req.running = true;
       _requests_in_model[mid].push_back(req.request_id);
       _model_queue.push(std::move(infer_model));
@@ -134,28 +193,49 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
       req.drafted_in_round = 0;
       req.spec_round += 1;
       req.spec_phase = LangSpecPhase::DRAFTING;
-      // fallthrough: issue first draft immediately
       [[fallthrough]];
     }
     case LangSpecPhase::DRAFTING: {
-      LanguageModel& model = *_language_model;  // DLM
+      request_rank_switch(0);  // DRAFT runs on DLM.
+      LanguageModel& model = *_language_model;
       auto infer_model = build_model(model, req, LangTaskType::DRAFT, 1u);
       uint32_t mid = infer_model->get_id();
       _model_meta[mid] = {req.request_id, LangTaskType::DRAFT, "draft",
-                          req.planned_draft_length, req.spec_round};
+                          req.planned_draft_length, req.spec_round, _cycle};
       req.running = true;
       _requests_in_model[mid].push_back(req.request_id);
       _model_queue.push(std::move(infer_model));
       return true;
     }
     case LangSpecPhase::AWAIT_VERIFY: {
+      // B2.3 — TVC gating: does it want a PRE_VERIFY before the full VERIFY?
+      // We only allow one PRE_VERIFY per spec_round to avoid livelock.
+      uint32_t pv_len = 0;
+      auto pv_it = _pre_verified_in_round.find(req.request_id);
+      bool already_pre_verified = (pv_it != _pre_verified_in_round.end()) &&
+                                  (pv_it->second == req.spec_round);
+      if (_ahasd != nullptr && _ahasd->config().enable_tvc &&
+          !already_pre_verified) {
+        pv_len = _ahasd->decide_pre_verify(req.current_length,
+                                           req.planned_draft_length);
+      }
+
       LanguageModel& model = _target_attached ? *_target_model : *_language_model;
       uint32_t k = std::max<uint32_t>(1u, req.planned_draft_length);
-      auto infer_model = build_model(model, req, LangTaskType::VERIFY, k);
+      LangTaskType task = LangTaskType::VERIFY;
+      uint32_t task_k = k;
+      if (pv_len > 0 && pv_len < k) {
+        task = LangTaskType::PRE_VERIFY;
+        task_k = pv_len;
+        _pre_verified_in_round[req.request_id] = req.spec_round;
+      }
+
+      request_rank_switch(1);  // VERIFY / PRE_VERIFY run on TLM.
+      auto infer_model = build_model(model, req, task, task_k);
       uint32_t mid = infer_model->get_id();
-      _model_meta[mid] = {req.request_id, LangTaskType::VERIFY,
+      _model_meta[mid] = {req.request_id, task,
                           _target_attached ? "target" : "single",
-                          k, req.spec_round};
+                          task_k, req.spec_round, _cycle};
       req.verify_round_id = req.spec_round;
       req.running = true;
       _requests_in_model[mid].push_back(req.request_id);
@@ -297,6 +377,16 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
       event.current_length = req.current_length;  // not committed yet
       if (req.drafted_in_round >= req.planned_draft_length) {
         req.spec_phase = LangSpecPhase::AWAIT_VERIFY;
+        // B2.3 — feed TVC PDCT with cycles spent drafting the whole round.
+        if (_ahasd != nullptr && _ahasd->config().enable_tvc) {
+          uint64_t elapsed = (_cycle > meta.issue_cycle)
+                                 ? (_cycle - meta.issue_cycle)
+                                 : 0;
+          // meta.issue_cycle is the *last* draft of the round. We use its
+          // elapsed cycles as a per-draft sample; PDCT then computes
+          // cycles/draft_length downstream. Pass draft_length=1 (one forward).
+          _ahasd->record_draft_batch(std::max<uint64_t>(1, elapsed), 1);
+        }
       } else {
         req.spec_phase = LangSpecPhase::DRAFTING;
       }
@@ -311,15 +401,49 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
       event.generated_tokens = accepted;
       apply_verify_result(req, k, accepted);
       event.current_length = req.current_length;
+      // B2.3 — feed EDC + TVC the verify outcome.
+      if (_ahasd != nullptr) {
+        uint64_t verify_cycles = (_cycle > meta.issue_cycle)
+                                     ? (_cycle - meta.issue_cycle)
+                                     : 0;
+        _ahasd->record_verify_result(accepted == k, k, accepted,
+                                      std::max<uint64_t>(1, verify_cycles),
+                                      req.current_length);
+      }
       if (req.spec_phase == LangSpecPhase::DONE) {
+        _last_rank_mode.erase(req.request_id);
+        _pre_verified_in_round.erase(req.request_id);
         _active_requests.erase(req.request_id);
       }
       break;
     }
-    case LangTaskType::PRE_VERIFY:
+    case LangTaskType::PRE_VERIFY: {
+      // PRE_VERIFY resolves a prefix of the round's draft; the remaining
+      // drafts still need a full VERIFY. We DO NOT commit here — we only
+      // feed TVC/EDC the outcome so their cycle tables / PHT counters see
+      // the intermediate evidence. spec_phase stays AWAIT_VERIFY so the
+      // next try_issue_one_task() still issues the VERIFY.
+      uint32_t pv_k = std::max<uint32_t>(1u, meta.draft_length_at_issue);
+      uint32_t pv_accepted = std::min<uint32_t>(
+          pv_k, sample_accepted_length(req, pv_k));
+      event.accepted_length = pv_accepted;
+      event.was_generation_phase = true;
+      event.generated_tokens = pv_accepted;
+      event.current_length = req.current_length;
+      if (_ahasd != nullptr) {
+        uint64_t pv_cycles = (_cycle > meta.issue_cycle)
+                                  ? (_cycle - meta.issue_cycle)
+                                  : 0;
+        _ahasd->record_pre_verify(std::max<uint64_t>(1, pv_cycles), pv_k);
+        _ahasd->record_verify_result(pv_accepted == pv_k, pv_k, pv_accepted,
+                                      std::max<uint64_t>(1, pv_cycles),
+                                      req.current_length);
+      }
+      break;
+    }
     case LangTaskType::AUTOREG:
     default:
-      // Not used in B2.1 spec path; treat as a no-op update.
+      // Not used in the B2.3 spec path; treat as a no-op update.
       event.was_generation_phase = true;
       event.generated_tokens = 0;
       event.current_length = req.current_length;

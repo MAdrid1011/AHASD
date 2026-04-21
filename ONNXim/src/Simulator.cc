@@ -6,6 +6,7 @@
 
 #include "SystolicOS.h"
 #include "SystolicWS.h"
+#include "scheduler/SpecDecodeScheduler.h"
 
 namespace fs = std::filesystem;
 
@@ -82,29 +83,27 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
     spdlog::info("[Simulator] PIM co-sim active; per-channel hold queues sized to {}", _n_memories);
   }
 
-  // Initialize AHASD if enabled
+  // B2.3 — AHASD coordinator. Construction is independent of the scheduler;
+  // the scheduler is injected with a pointer via attach_ahasd() after the
+  // first language model is registered.
   _enable_ahasd = _config.enable_ahasd;
   if (_enable_ahasd) {
     AHASD::AHASDConfig ahasd_config;
     ahasd_config.enable_edc = _config.enable_edc;
     ahasd_config.enable_tvc = _config.enable_tvc;
     ahasd_config.enable_aau = _config.enable_aau;
-    ahasd_config.pim_freq_mhz = _config.dram_freq;  // PIM freq = DRAM freq
-    ahasd_config.npu_freq_mhz = _config.core_freq;  // NPU freq = Core freq
+    ahasd_config.pim_freq_mhz = _config.dram_freq;
+    ahasd_config.npu_freq_mhz = _config.core_freq;
     ahasd_config.max_draft_length = _config.max_draft_length;
-    ahasd_config.enable_ssrc = _config.enable_ssrc;
-    ahasd_config.enable_ssrc_proxy = _config.enable_ssrc_proxy;
-    ahasd_config.enable_ssrc_trace = _config.enable_ssrc_trace;
-    ahasd_config.ssrc_state_bytes_per_token = _config.ssrc_state_bytes_per_token;
-    ahasd_config.ssrc_resident_limit_bytes = _config.ssrc_resident_limit_bytes;
-    ahasd_config.ssrc_confidence_threshold = _config.ssrc_confidence_threshold;
-    ahasd_config.dram_req_size = _config.dram_req_size;
-    ahasd_config.dram_latency = _config.dram_latency;
     _ahasd = std::make_unique<AHASD::AHASDIntegration>(ahasd_config);
-    spdlog::info("[AHASD] Enabled - EDC:{} TVC:{} AAU:{} SSRC:{} Proxy:{} Trace:{}",
-                 ahasd_config.enable_edc, ahasd_config.enable_tvc, ahasd_config.enable_aau,
-                 ahasd_config.enable_ssrc, ahasd_config.enable_ssrc_proxy,
-                 ahasd_config.enable_ssrc_trace);
+    spdlog::info("[AHASD] Enabled - EDC:{} TVC:{} AAU:{} max_k={}",
+                 ahasd_config.enable_edc, ahasd_config.enable_tvc,
+                 ahasd_config.enable_aau, ahasd_config.max_draft_length);
+    if (_enable_ahasd && !(_cosim && _cosim->is_active())) {
+      spdlog::warn("[AHASD] enabled without PIM co-sim: GTSU stalls and AAU "
+                    "fusion accounting will be inert; EDC/TVC decisions still "
+                    "run but do not feed the DRAM hold queue.");
+    }
   }
   
   /* Create heap */
@@ -122,10 +121,6 @@ void Simulator::handle_model() {
     if(_lang_scheduler->can_schedule_model()) {
       _models.push_back(_lang_scheduler->pop_model());
       std::push_heap(_models.begin(), _models.end(), CompareModel());
-      if (_enable_ahasd && _ahasd && _config.enable_ssrc_proxy &&
-          !_config.enable_ssrc_trace) {
-        _ahasd->submit_proxy_draft(_core_cycles);
-      }
     }
   }
   while (!_models.empty() && _models.front()->get_request_time() <= _core_time) {
@@ -257,15 +252,12 @@ void Simulator::cycle() {
       _icnt->cycle();
     }
     
-    // AHASD cycle update
-    if (_enable_ahasd && _ahasd) {
-      if (_cycle_mask & CORE_MASK) {
-        _ahasd->cycle_npu();
-        _ahasd->update_npu_progress(_core_cycles);
-      }
-      if (_cycle_mask & DRAM_MASK) {
-        _ahasd->cycle_pim();
-      }
+    // B2.3 — AHASD per-cycle update. The coordinator no longer owns
+    // queue bookkeeping (AsyncQueueManager was deleted with the sidecar);
+    // we only feed TVC's NCR with the current NPU cycle so its
+    // should_insert_preverification() decisions see real progress.
+    if (_enable_ahasd && _ahasd && (_cycle_mask & CORE_MASK)) {
+      _ahasd->cycle_npu_with_progress(_core_cycles);
     }
 
     // B2.2 — advance PIM-domain clock tracking and drain any held PIM pushes
@@ -279,39 +271,41 @@ void Simulator::cycle() {
   spdlog::info("Simulation Finished at {} cycle {} us", _core_cycles, _core_cycles / (_config.core_freq) );
   if (_enable_ahasd && _ahasd) {
     if (_cosim && _cosim->is_active()) {
-      // B2.2 — real cycle coupling is now possible: GTSU/TVC holds (and, in
-      // B2.3, EDC/AAU via PIMBackend) modulate _core_cycles via the push path.
+      // B2.3 — cycle coupling is genuine: GTSU switches (requested by
+      // SpecDecodeScheduler on DRAFT<->VERIFY phase boundaries) park PIM
+      // pushes in _pim_hold_queues, and PRE_VERIFY tasks inserted by TVC
+      // run as real simulator tasks.  Both mechanisms feed _core_cycles.
       spdlog::info("AHASD Metric Scope: coupled_accounting");
       spdlog::info("AHASD Cycle Coupling: real_coupling (pim_channels={}/{})",
                    _cosim->pim()->num_pim_channels(),
                    _cosim->pim()->total_channels());
     } else {
-      spdlog::info("AHASD Metric Scope: sidecar_accounting");
-      spdlog::info("AHASD Cycle Coupling: sidecar_only");
+      // AHASD is enabled but PIM co-sim is off. EDC/TVC still modulate the
+      // task graph (draft length k and PRE_VERIFY insertion), which still
+      // changes _core_cycles; only the GTSU / AAU paths are inert.
+      spdlog::info("AHASD Metric Scope: task_graph_coupling_only");
+      spdlog::info("AHASD Cycle Coupling: task_graph_only");
     }
   }
-  uint64_t request_identity_tagged_requests = 0;
-  uint64_t request_identity_tagged_bytes = 0;
-  uint64_t request_identity_tagged_read_bytes = 0;
-  uint64_t request_identity_tagged_write_bytes = 0;
+  // B2.2/B2.3 — attention-class (KV cache) traffic counters. The tag is
+  // consumed by PIMBackend::should_apply_aau_fusion(); keeping the
+  // aggregate visible in the log lets B2.4 derive energy from the byte
+  // totals and lets validation scripts confirm the AAU path is exercised.
+  uint64_t attn_tagged_requests = 0;
+  uint64_t attn_tagged_bytes = 0;
+  uint64_t attn_tagged_read_bytes = 0;
+  uint64_t attn_tagged_write_bytes = 0;
   for (int core_id = 0; core_id < _n_cores; core_id++) {
-    request_identity_tagged_requests += _cores[core_id]->get_request_identity_tagged_requests();
-    request_identity_tagged_bytes += _cores[core_id]->get_request_identity_tagged_bytes();
-    request_identity_tagged_read_bytes += _cores[core_id]->get_request_identity_tagged_read_bytes();
-    request_identity_tagged_write_bytes += _cores[core_id]->get_request_identity_tagged_write_bytes();
+    attn_tagged_requests += _cores[core_id]->get_request_identity_tagged_requests();
+    attn_tagged_bytes += _cores[core_id]->get_request_identity_tagged_bytes();
+    attn_tagged_read_bytes += _cores[core_id]->get_request_identity_tagged_read_bytes();
+    attn_tagged_write_bytes += _cores[core_id]->get_request_identity_tagged_write_bytes();
   }
-  spdlog::info("SSRC Request Identity Bridge Active: {}",
-               request_identity_tagged_requests > 0 ? 1 : 0);
-  spdlog::info("SSRC Request Identity Tagged Requests: {}",
-               request_identity_tagged_requests);
-  spdlog::info("SSRC Request Identity Tagged Bytes: {}",
-               request_identity_tagged_bytes);
-  spdlog::info("SSRC Request Identity Tagged Read Bytes: {}",
-               request_identity_tagged_read_bytes);
-  spdlog::info("SSRC Request Identity Tagged Write Bytes: {}",
-               request_identity_tagged_write_bytes);
-  spdlog::info("SSRC Request Identity Tagged Class: kv_cache_write");
-  
+  spdlog::info("Attention-Class Tagged Requests: {}", attn_tagged_requests);
+  spdlog::info("Attention-Class Tagged Bytes: {}", attn_tagged_bytes);
+  spdlog::info("Attention-Class Tagged Read Bytes: {}", attn_tagged_read_bytes);
+  spdlog::info("Attention-Class Tagged Write Bytes: {}", attn_tagged_write_bytes);
+
   /* Print simulation stats */
   for (int core_id = 0; core_id < _n_cores; core_id++) {
     _cores[core_id]->print_stats();
@@ -360,6 +354,15 @@ void Simulator::register_language_model(json info, std::unique_ptr<LanguageModel
     _lang_scheduler = LangScheduler::create(name, trace_file, std::move(model), _config, info);
     spdlog::info("[Simulator] language scheduler created with model '{}' (role='{}')",
                  name, role.empty() ? "single" : role);
+    // B2.3 — inject AHASD + PIM into the speculative scheduler so EDC/TVC/
+    // GTSU run on its real decisions. Non-speculative schedulers ignore.
+    if (_lang_scheduler->is_speculative()) {
+      auto* spec = dynamic_cast<SpecDecodeScheduler*>(_lang_scheduler.get());
+      if (spec != nullptr) {
+        spec->attach_ahasd(_enable_ahasd ? _ahasd.get() : nullptr,
+                           (_cosim && _cosim->is_active()) ? _cosim->pim() : nullptr);
+      }
+    }
     return;
   }
   if (role == "target") {
@@ -379,37 +382,10 @@ void Simulator::register_language_model(json info, std::unique_ptr<LanguageModel
 }
 
 void Simulator::finish_language_model(uint32_t model_id) {
+  // B2.3 — AHASD is now called inside SpecDecodeScheduler::finish_model via
+  // the AHASDIntegration pointer attach_ahasd() injected; there is no
+  // longer a post-finish sidecar submission step here.
   _lang_scheduler->finish_model(model_id);
-  if (_enable_ahasd && _ahasd && _config.enable_ssrc_trace) {
-    auto events = _lang_scheduler->consume_finished_events();
-    for (const auto& event : events) {
-      if (!event.was_generation_phase) {
-        continue;
-      }
-      uint32_t remaining = event.target_length > event.previous_length
-          ? event.target_length - event.previous_length
-          : event.generated_tokens;
-      uint32_t draft_length =
-          std::max(1u, std::min(_config.max_draft_length, remaining));
-      uint32_t accepted_length =
-          std::max(1u, std::min(event.generated_tokens, draft_length));
-      float draft_pressure = std::min(
-          1.0f, static_cast<float>(remaining) /
-                    static_cast<float>(std::max(1u, _config.max_draft_length)));
-      float avg_entropy = 1.2f + 1.5f * draft_pressure +
-                          0.1f * static_cast<float>(event.request_id % 3);
-      _ahasd->submit_trace_verified_draft(draft_length, accepted_length,
-                                          event.request_id,
-                                          event.previous_length,
-                                          event.current_length,
-                                          event.target_length, _core_cycles,
-                                          avg_entropy);
-    }
-  }
-  if (_enable_ahasd && _ahasd && _config.enable_ssrc_proxy &&
-      !_config.enable_ssrc_trace) {
-    _ahasd->submit_proxy_verification(_core_cycles);
-  }
 }
 
 bool Simulator::running() {

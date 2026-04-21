@@ -30,14 +30,8 @@ CONFIGS = {
     "npu_pim_aau": ["--enable-ahasd", "--enable-aau"],
     "npu_pim_aau_edc": ["--enable-ahasd", "--enable-aau", "--enable-edc"],
     "ahasd_full": ["--enable-ahasd", "--enable-aau", "--enable-edc", "--enable-tvc"],
-    "ahasd_full_ssrc": [
-        "--enable-ahasd",
-        "--enable-aau",
-        "--enable-edc",
-        "--enable-tvc",
-        "--enable-ssrc",
-        "--enable-ssrc-trace",
-    ],
+    # ahasd_full_ssrc was removed in B2.3 along with the sidecar. F1 will
+    # reintroduce it backed by real SSRC cycle coupling.
 }
 
 METRIC_KEYS = [
@@ -52,28 +46,10 @@ METRIC_KEYS = [
     "drafts_generated",
     "drafts_accepted",
     "acceptance_rate",
-    "ssrc_baseline_materialized_bytes",
-    "ssrc_actual_materialized_bytes",
-    "ssrc_avoided_materialization_bytes",
-    "ssrc_materialization_avoidance_ratio",
-    "ssrc_resident_peak_bytes",
-    "ssrc_deferred_batches",
-    "ssrc_modeled_dram_request_size_bytes",
-    "ssrc_modeled_dram_latency_cycles",
-    "ssrc_modeled_dram_request_equiv",
-    "ssrc_raw_total_cycles",
-    "ssrc_modeled_unclamped_avoided_memory_cycles",
-    "ssrc_modeled_upper_bound_avoided_memory_cycles",
-    "ssrc_modeled_upper_bound_adjusted_cycles",
-    "ssrc_modeled_upper_bound_cycle_reduction_ratio",
-    "ssrc_modeled_avoided_memory_cycles",
-    "ssrc_modeled_adjusted_cycles",
-    "ssrc_modeled_cycle_reduction_ratio",
-    "ssrc_metric_quality",
-    "ssrc_request_overlap_upper_bound_bytes",
-    "ssrc_request_overlap_coverage_gap_bytes",
-    "ssrc_request_overlap_upper_bound_vs_avoided_ratio",
-    "ssrc_request_overlap_upper_bound_vs_tagged_write_ratio",
+    "attention_class_tagged_requests",
+    "attention_class_tagged_bytes",
+    "attention_class_tagged_read_bytes",
+    "attention_class_tagged_write_bytes",
 ]
 
 
@@ -97,9 +73,8 @@ def parse_args():
     parser.add_argument("--npu-freq", type=float, default=1000.0)
     parser.add_argument("--pim-freq", type=float, default=800.0)
     parser.add_argument("--num-pim-ranks", type=int, default=16)
-    parser.add_argument("--ssrc-confidence-threshold", type=float, default=0.8)
-    parser.add_argument("--ssrc-resident-limit-mb", type=float, default=32.0)
-    parser.add_argument("--ssrc-state-bytes-per-token", type=int, default=524288)
+    # B2.3: --ssrc-* CLI flags were removed with the sidecar. F1 will
+    # reintroduce them once SSRC has real cycle coupling.
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--enable-trace", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
@@ -163,17 +138,8 @@ def run_one(root, args, output_root, model, algorithm, config_name):
         str(args.num_pim_ranks),
     ]
     cmd.extend(CONFIGS[config_name])
-    if config_name == "ahasd_full_ssrc":
-        cmd.extend(
-            [
-                "--ssrc-confidence-threshold",
-                str(args.ssrc_confidence_threshold),
-                "--ssrc-resident-limit-mb",
-                str(args.ssrc_resident_limit_mb),
-                "--ssrc-state-bytes-per-token",
-                str(args.ssrc_state_bytes_per_token),
-            ]
-        )
+    # B2.3: ssrc_* flags were removed with the sidecar. F1 will reintroduce
+    # them once SSRC has real cycle coupling.
     if args.enable_trace:
         cmd.append("--enable-trace")
     if args.dry_run:
@@ -336,51 +302,18 @@ def summarize_contract(runs, hardware, dry_run=False):
                 source,
                 "Dry-run outputs only verify command wiring; hardware validation was not measured.",
             ),
-            "ssrc_avoided_materialization_ratio_avg": make_metric_entry(
-                None,
-                "dry_run",
-                source,
-                "Dry-run outputs only verify command wiring; no SSRC materialization evidence was measured.",
-            ),
-            "ssrc_modeled_cycle_reduction_ratio_avg": make_metric_entry(
-                None,
-                "dry_run",
-                source,
-                "Dry-run outputs only verify command wiring; no modeled SSRC cycle evidence was measured.",
-            ),
-            "ssrc_modeled_upper_bound_cycle_reduction_ratio_avg": make_metric_entry(
-                None,
-                "dry_run",
-                source,
-                "Dry-run outputs only verify command wiring; no modeled SSRC upper-bound evidence was measured.",
-            ),
         }
 
-    ssrc_candidate = "ahasd_full_ssrc" if any(r["config"] == "ahasd_full_ssrc" for r in runs) else "ahasd_full"
+    # B2.3 — ssrc_candidate collapses to ahasd_full (the only AHASD+spec
+    # coupling config currently exposed). F1 will reintroduce ahasd_full_ssrc
+    # and populate a parallel candidate once SSRC has real coupling.
+    ssrc_candidate = "ahasd_full"
     throughput_vs_gpu = collect_ratios(runs, ssrc_candidate, "baseline", "throughput_tokens_per_sec")
     throughput_vs_specpim = collect_ratios(runs, ssrc_candidate, "npu_pim", "throughput_tokens_per_sec")
     ablation_throughput = collect_ratios(runs, "ahasd_full", "baseline", "throughput_tokens_per_sec")
     energy_vs_gpu = collect_ratios(runs, ssrc_candidate, "baseline", "energy_efficiency_tokens_per_mj")
     energy_vs_specpim = collect_ratios(runs, ssrc_candidate, "npu_pim", "energy_efficiency_tokens_per_mj")
     ablation_energy = collect_ratios(runs, "ahasd_full", "baseline", "energy_efficiency_tokens_per_mj")
-
-    ssrc_avoidance = []
-    ssrc_modeled_cycle_reduction = []
-    ssrc_modeled_upper_bound_cycle_reduction = []
-    for record in runs:
-        if record["config"] != "ahasd_full_ssrc":
-            continue
-        avoided = metric(record, "ssrc_avoided_materialization_bytes")
-        baseline = metric(record, "ssrc_baseline_materialized_bytes")
-        value = ratio(avoided, baseline)
-        if value is not None:
-            ssrc_avoidance.append(value)
-        modeled_reduction = metric(record, "ssrc_modeled_cycle_reduction_ratio")
-        if modeled_reduction is not None:
-            ssrc_modeled_cycle_reduction.append(modeled_reduction)
-        upper_bound_reduction = metric(record, "ssrc_modeled_upper_bound_cycle_reduction_ratio")
-        if upper_bound_reduction is not None:
-            ssrc_modeled_upper_bound_cycle_reduction.append(upper_bound_reduction)
 
     def entry_from_values(values, reducer, source, note):
         if not values:
@@ -449,24 +382,8 @@ def summarize_contract(runs, hardware, dry_run=False):
             "validate_hardware_costs.py",
             "Same hardware model validation; not a GPU runtime metric.",
         ),
-        "ssrc_avoided_materialization_ratio_avg": entry_from_values(
-            ssrc_avoidance,
-            lambda values: sum(values) / len(values),
-            "cycle-accurate ONNXim batch evaluation",
-            "Average avoided speculative-state materialization ratio for ahasd_full_ssrc.",
-        ),
-        "ssrc_modeled_cycle_reduction_ratio_avg": entry_from_values(
-            ssrc_modeled_cycle_reduction,
-            lambda values: sum(values) / len(values),
-            "modeled SSRC sidecar cycle proxy",
-            "Average materialization-capped modeled adjusted-cycle reduction ratio; diagnostic only and not a raw ONNXim cycle improvement.",
-        ),
-        "ssrc_modeled_upper_bound_cycle_reduction_ratio_avg": entry_from_values(
-            ssrc_modeled_upper_bound_cycle_reduction,
-            lambda values: sum(values) / len(values),
-            "modeled SSRC sidecar cycle upper bound",
-            "Average unclamped-request model after raw-cycle cap; upper-bound diagnostic only and not a raw ONNXim cycle improvement.",
-        ),
+        # B2.3: ssrc_* summary metrics removed with the sidecar; F1 will
+        # reintroduce them backed by real SSRC cycle coupling.
     }
 
     return metrics

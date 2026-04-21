@@ -144,18 +144,11 @@ SimulationConfig initialize_config(json config) {
     parsed_config.enable_aau = config["enable_aau"];
   if (config.contains("max_draft_length"))
     parsed_config.max_draft_length = config["max_draft_length"];
-  if (config.contains("enable_ssrc"))
-    parsed_config.enable_ssrc = config["enable_ssrc"];
-  if (config.contains("enable_ssrc_proxy"))
-    parsed_config.enable_ssrc_proxy = config["enable_ssrc_proxy"];
-  if (config.contains("enable_ssrc_trace"))
-    parsed_config.enable_ssrc_trace = config["enable_ssrc_trace"];
-  if (config.contains("ssrc_state_bytes_per_token"))
-    parsed_config.ssrc_state_bytes_per_token = config["ssrc_state_bytes_per_token"];
-  if (config.contains("ssrc_resident_limit_bytes"))
-    parsed_config.ssrc_resident_limit_bytes = config["ssrc_resident_limit_bytes"];
-  if (config.contains("ssrc_confidence_threshold"))
-    parsed_config.ssrc_confidence_threshold = config["ssrc_confidence_threshold"];
+  // B2.3 — SSRC config keys (enable_ssrc, enable_ssrc_proxy, enable_ssrc_trace,
+  // ssrc_state_bytes_per_token, ssrc_resident_limit_bytes,
+  // ssrc_confidence_threshold) were removed when the sidecar was deleted.
+  // Older onnxim_config.json inputs may still carry them; json::parse ignores
+  // unknown keys so no compatibility shim is required.
 
   /* B2.2 — PIM co-simulation config */
   if (config.contains("pim_enable"))
