@@ -1,0 +1,16 @@
+{
+  "_doc": "AHASD reference overlay — full system with PIM co-sim + EDC + TVC + AAU + GTSU. Used as the apples-to-apples contrast against W5 NPU-only. Matches B2.7's A_full axis.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "enable_ahasd": true,
+  "enable_edc": true,
+  "enable_tvc": true,
+  "enable_aau": true,
+  "max_draft_length": 4,
+  "pim_enable": true,
+  "pim_channel_mask": "",
+  "pim_channel_stride": 2,
+  "pim_clock_mhz": 800,
+  "pim_enable_aau_fusion": true,
+  "pim_aau_fusion_ratio": 0.75,
+  "pim_gtsu_switch_ns": 55
+}
