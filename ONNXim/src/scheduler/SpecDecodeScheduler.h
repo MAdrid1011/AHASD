@@ -16,6 +16,7 @@
 // milestones can override them without touching this skeleton.
 
 #include "LanguageScheduler.h"
+#include "../SyntheticAcceptanceModel.h"
 
 // B2.3: forward declarations so we do not leak AHASD / PIM headers via the
 // scheduler interface (Simulator.cc injects them via attach_ahasd()).
@@ -44,6 +45,10 @@ class SpecDecodeScheduler : public LangScheduler {
   void finish_model(uint32_t model_id) override;
   bool busy() override;
   uint64_t get_kv_memory_size() override;
+
+  // B2.5 — end-of-simulation summary of synthetic acceptance outcomes.
+  // Simulator calls this once run completes.
+  void print_acceptance_stats() const;
 
  protected:
   // Hooks for later milestones.
@@ -87,6 +92,18 @@ class SpecDecodeScheduler : public LangScheduler {
   // Synthetic entropy hint for EDC (B2.3). Real entropy arrives once the
   // synthetic acceptance model lands in B2.5.
   float compute_entropy_hint(const LangRequest& req) const;
+
+  // B2.5 — synthetic acceptance model. Owned by the scheduler so mode /
+  // coeffs are scoped to the speculative path; load_from_config is called
+  // once in the constructor.
+  ahasd_accept::SyntheticAcceptanceModel _accept_model;
+
+  // B2.5 — smoke + B2.7 consumption: tally of how many rounds the EDC
+  // picked each (k, accepted_length) pair so the end-of-simulation log
+  // can show acceptance distribution without rereading the event stream.
+  uint64_t _accept_samples = 0;
+  uint64_t _accept_sum     = 0;
+  uint64_t _accept_k_sum   = 0;
 
   // Step the state machine for one request; returns true if a model was issued.
   bool try_issue_one_task(LangRequest& req);
