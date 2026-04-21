@@ -1,3 +1,6 @@
 models/*
+!models/language_models/
+models/language_models/*
+!models/language_models/*.json
 model_lists/*
 build/*
