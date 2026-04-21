@@ -101,6 +101,20 @@ struct SimulationConfig {
   float pim_aau_fusion_ratio = 0.75f;
   uint32_t pim_gtsu_switch_ns = 55;
 
+  /* B2.4 — energy-model coefficients (LUT, per-pJ). Defaults are documented
+   * in EnergyModel.h. All keys are optional in onnxim_config.json; absent
+   * keys fall back to the defaults below so existing configs keep running.
+   */
+  double energy_npu_active_pj_per_cycle = 3000.0;
+  double energy_npu_vector_pj_per_cycle = 500.0;
+  double energy_npu_idle_pj_per_cycle = 300.0;
+  double energy_pim_read_pj_per_byte = 35.0;
+  double energy_pim_write_pj_per_byte = 55.0;
+  double energy_pim_rank_leak_pj_per_pim_cycle = 50.0;
+  double energy_aau_fusion_save_pj_per_event = 80000.0;
+  double energy_bus_pj_per_byte = 40.0;
+  double energy_gtsu_switch_pj_per_event = 20000.0;
+
   /*
    * This map stores the partition information: <partition_id, core_id>
    *

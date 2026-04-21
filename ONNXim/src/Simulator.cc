@@ -108,6 +108,21 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
   
   /* Create heap */
   std::make_heap(_models.begin(), _models.end(), CompareModel());
+
+  // B2.4 — initialise energy model from SimulationConfig coefficients.
+  // Coefficients already defaulted in SimulationConfig.h; overrides are
+  // applied by Common::initialize_config when optional json keys present.
+  ahasd_energy::EnergyCoeffs ec;
+  ec.npu_active_pj_per_cycle          = _config.energy_npu_active_pj_per_cycle;
+  ec.npu_vector_pj_per_cycle          = _config.energy_npu_vector_pj_per_cycle;
+  ec.npu_idle_pj_per_cycle            = _config.energy_npu_idle_pj_per_cycle;
+  ec.pim_read_pj_per_byte             = _config.energy_pim_read_pj_per_byte;
+  ec.pim_write_pj_per_byte            = _config.energy_pim_write_pj_per_byte;
+  ec.pim_rank_leak_pj_per_pim_cycle   = _config.energy_pim_rank_leak_pj_per_pim_cycle;
+  ec.aau_fusion_save_pj_per_event     = _config.energy_aau_fusion_save_pj_per_event;
+  ec.bus_pj_per_byte                  = _config.energy_bus_pj_per_byte;
+  ec.gtsu_switch_pj_per_event         = _config.energy_gtsu_switch_pj_per_event;
+  _energy_model = ahasd_energy::EnergyModel(ec);
 }
 
 void Simulator::run_simulator() {
@@ -187,6 +202,7 @@ void Simulator::cycle() {
             _icnt->push(core_id, get_dest_node(front), front);
             _cores[core_id]->pop_memory_request();
             _nr_from_core++;
+            _tot_nr_from_core++;
           }
         }
         // Push response from ICNT. to Core.
@@ -194,6 +210,7 @@ void Simulator::cycle() {
           _cores[core_id]->push_memory_response(_icnt->top(core_id));
           _icnt->pop(core_id);
           _nr_to_core++;
+          _tot_nr_to_core++;
         }
       }
 
@@ -206,6 +223,7 @@ void Simulator::cycle() {
             _dram->push(mem_id, front.second);
             _pim_hold_queues[mem_id].pop();
             _nr_to_mem++;
+            _tot_nr_to_mem++;
           }
         }
         // ICNT to memory
@@ -226,6 +244,7 @@ void Simulator::cycle() {
           }
           _icnt->pop(_n_cores + mem_id);
           _nr_to_mem++;
+          _tot_nr_to_mem++;
         }
         // Pop response to ICNT from dram
         if (!_dram->is_empty(mem_id) &&
@@ -237,6 +256,7 @@ void Simulator::cycle() {
           _icnt->push(_n_cores + mem_id, get_dest_node(resp), resp);
           _dram->pop(mem_id);
           _nr_from_mem++;
+          _tot_nr_from_mem++;
         }
       }
       if (_icnt_interval!=0 && _icnt_cycle % _icnt_interval == 0) {
@@ -321,6 +341,40 @@ void Simulator::cycle() {
   if (_cosim) {
     _cosim->print_statistics(_core_cycles);
   }
+
+  // B2.4 — assemble final energy aggregate and emit `Total Energy` line.
+  // Core stats were updated by print_stats() above, so `_stat_tot_*` reflect
+  // final per-core totals and can be safely summed here.
+  ahasd_energy::CoreAggregate core_agg;
+  core_agg.num_cores = _n_cores;
+  core_agg.core_cycle = _core_cycles;
+  for (int core_id = 0; core_id < _n_cores; core_id++) {
+    core_agg.tot_systolic_active_cycle +=
+        _cores[core_id]->get_systolic_active_cycles();
+    core_agg.tot_vec_compute_cycle +=
+        _cores[core_id]->get_vec_compute_cycles();
+    core_agg.tot_idle_cycle += _cores[core_id]->get_idle_cycles();
+    core_agg.tot_memory_idle_cycle +=
+        _cores[core_id]->get_memory_idle_cycles();
+  }
+  ahasd_energy::PIMAggregate pim_agg;
+  if (_cosim && _cosim->is_active() && _cosim->pim()) {
+    const auto& ps = _cosim->pim()->stats();
+    pim_agg.total_pim_read_bytes   = ps.total_pim_read_bytes;
+    pim_agg.total_pim_write_bytes  = ps.total_pim_write_bytes;
+    pim_agg.total_aau_fused_events = ps.total_aau_fused_events;
+    pim_agg.total_gtsu_switches    = ps.total_gtsu_switches;
+    pim_agg.pim_cycle              = ps.pim_cycle;
+    pim_agg.num_pim_channels       = _cosim->pim()->num_pim_channels();
+  }
+  ahasd_energy::BusAggregate bus_agg;
+  // NPU->MEM = `_tot_nr_to_mem`, MEM->NPU = `_tot_nr_from_mem`. Per-request
+  // payload size is `_memory_req_size` bytes.
+  bus_agg.total_bytes_npu_to_mem = _tot_nr_to_mem   * _memory_req_size;
+  bus_agg.total_bytes_mem_to_npu = _tot_nr_from_mem * _memory_req_size;
+
+  const auto breakdown = _energy_model.compute(core_agg, pim_agg, bus_agg);
+  _energy_model.print(breakdown);
 }
 
 void Simulator::register_model(std::unique_ptr<Model> model) {

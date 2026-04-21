@@ -166,6 +166,26 @@ SimulationConfig initialize_config(json config) {
   if (config.contains("pim_gtsu_switch_ns"))
     parsed_config.pim_gtsu_switch_ns = config["pim_gtsu_switch_ns"];
 
+  /* B2.4 — energy model coefficients (LUT, per pJ). All optional. */
+  if (config.contains("energy_npu_active_pj_per_cycle"))
+    parsed_config.energy_npu_active_pj_per_cycle = config["energy_npu_active_pj_per_cycle"];
+  if (config.contains("energy_npu_vector_pj_per_cycle"))
+    parsed_config.energy_npu_vector_pj_per_cycle = config["energy_npu_vector_pj_per_cycle"];
+  if (config.contains("energy_npu_idle_pj_per_cycle"))
+    parsed_config.energy_npu_idle_pj_per_cycle = config["energy_npu_idle_pj_per_cycle"];
+  if (config.contains("energy_pim_read_pj_per_byte"))
+    parsed_config.energy_pim_read_pj_per_byte = config["energy_pim_read_pj_per_byte"];
+  if (config.contains("energy_pim_write_pj_per_byte"))
+    parsed_config.energy_pim_write_pj_per_byte = config["energy_pim_write_pj_per_byte"];
+  if (config.contains("energy_pim_rank_leak_pj_per_pim_cycle"))
+    parsed_config.energy_pim_rank_leak_pj_per_pim_cycle = config["energy_pim_rank_leak_pj_per_pim_cycle"];
+  if (config.contains("energy_aau_fusion_save_pj_per_event"))
+    parsed_config.energy_aau_fusion_save_pj_per_event = config["energy_aau_fusion_save_pj_per_event"];
+  if (config.contains("energy_bus_pj_per_byte"))
+    parsed_config.energy_bus_pj_per_byte = config["energy_bus_pj_per_byte"];
+  if (config.contains("energy_gtsu_switch_pj_per_event"))
+    parsed_config.energy_gtsu_switch_pj_per_event = config["energy_gtsu_switch_pj_per_event"];
+
   if (config.contains("partition")) {
     for (int i=0; i<parsed_config.num_cores; i++) {
       std::string core_partition = "core_" + std::to_string(i);

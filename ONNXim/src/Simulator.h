@@ -9,6 +9,7 @@
 #include "scheduler/LanguageScheduler.h"
 #include "AHASDIntegration.h"
 #include "CoSimDriver.h"
+#include "EnergyModel.h"
 #include <queue>
 #include <tuple>
 
@@ -84,8 +85,18 @@ class Simulator {
   uint64_t _nr_to_core=0;
   uint64_t _nr_from_mem=0;
   uint64_t _nr_to_mem=0;
+  // B2.4 — cumulative versions of the above (never reset by the interval
+  // logging path). Drive the energy-model `BusAggregate`.
+  uint64_t _tot_nr_from_core=0;
+  uint64_t _tot_nr_to_core=0;
+  uint64_t _tot_nr_from_mem=0;
+  uint64_t _tot_nr_to_mem=0;
   cycle_type _icnt_cycle=0;
   uint64_t _icnt_interval=0;
+
+  // B2.4 — energy model. Coefficients are loaded from SimulationConfig json
+  // via `load_from_config` when the simulator is built.
+  ahasd_energy::EnergyModel _energy_model;
 
   struct CompareModel {
     bool operator()(const std::unique_ptr<Model>& a, const std::unique_ptr<Model>& b) const {

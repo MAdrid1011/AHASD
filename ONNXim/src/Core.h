@@ -29,6 +29,22 @@ class Core {
   virtual void print_current_stats();
 
   virtual cycle_type get_compute_cycles() { return _stat_tot_compute_cycle; }
+
+  // B2.4 — energy-model inputs. `update_stats()` is driven by print_stats()
+  // at end-of-simulation, so these getters reflect final totals when the
+  // Simulator has already called print_stats(); they are also safe to call
+  // after `update_stats()`. Energy uses them after print_stats().
+  virtual cycle_type get_systolic_active_cycles() const {
+    return _stat_tot_systolic_active_cycle;
+  }
+  virtual cycle_type get_vec_compute_cycles() const {
+    return _stat_tot_vec_compute_cycle;
+  }
+  virtual cycle_type get_idle_cycles() const { return _stat_tot_idle_cycle; }
+  virtual cycle_type get_memory_idle_cycles() const {
+    return _stat_tot_memory_idle_cycle;
+  }
+
   virtual uint64_t get_request_identity_tagged_requests() const {
     return _stat_tot_request_identity_tagged_requests;
   }
