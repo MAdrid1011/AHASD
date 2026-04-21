@@ -20,6 +20,10 @@ results/
 *.png
 *.pdf
 
+# Canonical workload traces (opt-in exception to *.csv) — these define
+# reproducible baseline inputs for Phase C/D and are safe to track.
+!workloads/*.csv
+
 # IDE
 .vscode/
 .idea/

@@ -1,0 +1,11 @@
+{
+  "_doc": "C1 / W5 baseline — NPU-only speculative decoding on ONNXim. PIM is present physically (LPDDR5 model loads) but its compute path is off; DLM and TLM serialize on the NPU. Reviewer R4 needs this as the apples-to-apples reference against which SpecPIM and AHASD get measured.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "enable_ahasd": false,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "max_draft_length": 4,
+  "pim_enable": false,
+  "pim_enable_aau_fusion": false
+}
