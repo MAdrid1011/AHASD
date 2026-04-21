@@ -75,6 +75,13 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
   //Configure Hardware Scheduler
   _scheduler = Scheduler::create(_config, &_core_cycles, &_core_time, this);
   
+  // B2.2 — instantiate PIM co-simulation driver (no-op when pim_enable=false).
+  _cosim = std::make_unique<CoSimDriver>(_config);
+  _pim_hold_queues.resize(_n_memories);
+  if (_cosim->is_active()) {
+    spdlog::info("[Simulator] PIM co-sim active; per-channel hold queues sized to {}", _n_memories);
+  }
+
   // Initialize AHASD if enabled
   _enable_ahasd = _config.enable_ahasd;
   if (_enable_ahasd) {
@@ -196,18 +203,43 @@ void Simulator::cycle() {
       }
 
       for (int mem_id = 0; mem_id < _n_memories; mem_id++) {
+        // B2.2 — drain PIM hold queue: any request whose GTSU/TVC stall
+        // deadline has expired is now released into the DRAM backend.
+        if (_cosim && _cosim->is_active() && !_pim_hold_queues[mem_id].empty()) {
+          auto& front = _pim_hold_queues[mem_id].front();
+          if (front.first <= _core_cycles && !_dram->is_full(mem_id, front.second)) {
+            _dram->push(mem_id, front.second);
+            _pim_hold_queues[mem_id].pop();
+            _nr_to_mem++;
+          }
+        }
         // ICNT to memory
         if (!_icnt->is_empty(_n_cores + mem_id) &&
             !_dram->is_full(mem_id, _icnt->top(_n_cores + mem_id))) {
-          _dram->push(mem_id, _icnt->top(_n_cores + mem_id));
+          MemoryAccess* front = _icnt->top(_n_cores + mem_id);
+          // B2.2 — PIM overlay: may request that this push be held for a few
+          // NPU cycles (GTSU switch, TVC pre-verify window). When active and
+          // a hold is requested, park the request rather than passing to DRAM.
+          uint32_t hold = 0;
+          if (_cosim && _cosim->is_active()) {
+            hold = _cosim->on_dram_push(mem_id, front, _core_cycles);
+          }
+          if (hold == 0) {
+            _dram->push(mem_id, front);
+          } else {
+            _pim_hold_queues[mem_id].push({_core_cycles + hold, front});
+          }
           _icnt->pop(_n_cores + mem_id);
           _nr_to_mem++;
         }
         // Pop response to ICNT from dram
         if (!_dram->is_empty(mem_id) &&
             !_icnt->is_full(_n_cores + mem_id, _dram->top(mem_id))) {
-          _icnt->push(_n_cores + mem_id, get_dest_node(_dram->top(mem_id)),
-                      _dram->top(mem_id));
+          MemoryAccess* resp = _dram->top(mem_id);
+          if (_cosim && _cosim->is_active()) {
+            _cosim->on_dram_pop(mem_id, resp, _core_cycles);
+          }
+          _icnt->push(_n_cores + mem_id, get_dest_node(resp), resp);
           _dram->pop(mem_id);
           _nr_from_mem++;
         }
@@ -235,11 +267,28 @@ void Simulator::cycle() {
         _ahasd->cycle_pim();
       }
     }
+
+    // B2.2 — advance PIM-domain clock tracking and drain any held PIM pushes
+    // that have reached their deadline (the in-loop drain above handles
+    // matching with DRAM availability; this call only updates the driver's
+    // internal cycle tracker).
+    if (_cosim && _cosim->is_active() && (_cycle_mask & CORE_MASK)) {
+      _cosim->cycle(_core_cycles);
+    }
   }
   spdlog::info("Simulation Finished at {} cycle {} us", _core_cycles, _core_cycles / (_config.core_freq) );
   if (_enable_ahasd && _ahasd) {
-    spdlog::info("AHASD Metric Scope: sidecar_accounting");
-    spdlog::info("AHASD Cycle Coupling: sidecar_only");
+    if (_cosim && _cosim->is_active()) {
+      // B2.2 — real cycle coupling is now possible: GTSU/TVC holds (and, in
+      // B2.3, EDC/AAU via PIMBackend) modulate _core_cycles via the push path.
+      spdlog::info("AHASD Metric Scope: coupled_accounting");
+      spdlog::info("AHASD Cycle Coupling: real_coupling (pim_channels={}/{})",
+                   _cosim->pim()->num_pim_channels(),
+                   _cosim->pim()->total_channels());
+    } else {
+      spdlog::info("AHASD Metric Scope: sidecar_accounting");
+      spdlog::info("AHASD Cycle Coupling: sidecar_only");
+    }
   }
   uint64_t request_identity_tagged_requests = 0;
   uint64_t request_identity_tagged_bytes = 0;
@@ -274,6 +323,10 @@ void Simulator::cycle() {
   if (_enable_ahasd && _ahasd) {
     _ahasd->print_statistics(_core_cycles);
   }
+  // B2.2 — PIM / CoSim statistics (feeds into B2.4 energy extraction).
+  if (_cosim) {
+    _cosim->print_statistics(_core_cycles);
+  }
 }
 
 void Simulator::register_model(std::unique_ptr<Model> model) {
@@ -294,6 +347,34 @@ void Simulator::register_language_model(json info, std::unique_ptr<LanguageModel
   if(_weight_table.find(name) == _weight_table.end()) {
     model->initialize_weight(_weight_table[name]);
   }
+  // B2.1: support draft/target role separation. When a scheduler is already
+  // instantiated and a new model comes in with role="target", we delegate
+  // attachment to the existing scheduler rather than overwriting it (the old
+  // behaviour was to silently overwrite, which was what blocked TLM entirely).
+  std::string role = info.contains("role") ? info["role"].get<std::string>() : std::string("");
+  if (!_lang_scheduler) {
+    if (role == "target") {
+      spdlog::error("[Simulator] role=target given before any draft model; cannot attach");
+      throw std::runtime_error("target model registered before draft");
+    }
+    _lang_scheduler = LangScheduler::create(name, trace_file, std::move(model), _config, info);
+    spdlog::info("[Simulator] language scheduler created with model '{}' (role='{}')",
+                 name, role.empty() ? "single" : role);
+    return;
+  }
+  if (role == "target") {
+    if (_lang_scheduler->attach_target_model(std::move(model), info)) {
+      spdlog::info("[Simulator] target language model '{}' attached to scheduler '{}'",
+                   name, _lang_scheduler->get_name());
+    } else {
+      spdlog::warn("[Simulator] scheduler '{}' refused target model '{}'; continuing without TLM",
+                   _lang_scheduler->get_name(), name);
+    }
+    return;
+  }
+  // Legacy: second non-target registration overwrites (DAC behaviour).
+  spdlog::warn("[Simulator] overwriting existing language scheduler with model '{}' (role='{}')",
+               name, role.empty() ? "single" : role);
   _lang_scheduler = LangScheduler::create(name, trace_file, std::move(model), _config, info);
 }
 
@@ -342,6 +423,12 @@ bool Simulator::running() {
   running = running || !_scheduler->empty();
   if(_language_mode) {
     running = running || _lang_scheduler->busy();
+  }
+  // B2.2 — outstanding PIM holds count as running work.
+  if (_cosim && _cosim->is_active()) {
+    for (const auto& q : _pim_hold_queues) {
+      if (!q.empty()) { running = true; break; }
+    }
   }
   return running;
 }

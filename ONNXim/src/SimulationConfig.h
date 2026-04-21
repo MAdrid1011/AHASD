@@ -83,6 +83,27 @@ struct SimulationConfig {
   uint64_t ssrc_resident_limit_bytes = 33554432;
   float ssrc_confidence_threshold = 0.55f;
 
+  /* B2.2 — PIM co-simulation (NPU + PIM heterogeneous DRAM).
+   *   pim_enable:          master flag; when false Simulator behaves as legacy.
+   *   pim_channel_mask:    channel ids routed as "PIM rank" (vs standard LPDDR).
+   *                        Empty => use pim_channel_stride to auto-assign.
+   *   pim_channel_stride:  when mask empty, pick every N-th channel (default 2).
+   *   pim_clock_mhz:       PIM-side clock, used for NPU/PIM domain conversion.
+   *   pim_enable_aau_fusion:
+   *                        AAU fuses exp/sum/normalize inside PIM rank, so
+   *                        attention-class traffic does NOT return to NPU.
+   *   pim_aau_fusion_ratio:
+   *                        fraction of attention bytes saved per fused op.
+   *   pim_gtsu_switch_ns:  NPU↔PIM rank switching latency (tRRD_L/tRCD class).
+   */
+  bool pim_enable = false;
+  std::string pim_channel_mask = "";
+  uint32_t pim_channel_stride = 2;
+  uint32_t pim_clock_mhz = 800;
+  bool pim_enable_aau_fusion = true;
+  float pim_aau_fusion_ratio = 0.75f;
+  uint32_t pim_gtsu_switch_ns = 55;
+
   /*
    * This map stores the partition information: <partition_id, core_id>
    *
