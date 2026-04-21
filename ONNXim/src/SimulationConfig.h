@@ -70,18 +70,15 @@ struct SimulationConfig {
   uint32_t full_precision = 4;
   std::string layout;
   
-  /* AHASD config */
+  /* AHASD config.
+   * SSRC flags were removed in B2.3 with the sidecar; SSRC real cycle
+   * coupling will come back as part of F1 and own its own config block.
+   */
   bool enable_ahasd = false;
   bool enable_edc = true;
   bool enable_tvc = true;
   bool enable_aau = true;
-  bool enable_ssrc = false;
-  bool enable_ssrc_proxy = false;
-  bool enable_ssrc_trace = false;
   uint32_t max_draft_length = 16;
-  uint64_t ssrc_state_bytes_per_token = 524288;
-  uint64_t ssrc_resident_limit_bytes = 33554432;
-  float ssrc_confidence_threshold = 0.55f;
 
   /* B2.2 — PIM co-simulation (NPU + PIM heterogeneous DRAM).
    *   pim_enable:          master flag; when false Simulator behaves as legacy.

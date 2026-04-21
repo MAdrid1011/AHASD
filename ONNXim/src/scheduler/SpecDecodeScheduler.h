@@ -17,6 +17,11 @@
 
 #include "LanguageScheduler.h"
 
+// B2.3: forward declarations so we do not leak AHASD / PIM headers via the
+// scheduler interface (Simulator.cc injects them via attach_ahasd()).
+namespace AHASD { class AHASDIntegration; }
+class PIMBackend;
+
 class SpecDecodeScheduler : public LangScheduler {
  public:
   SpecDecodeScheduler(std::string name, std::string path,
@@ -29,6 +34,11 @@ class SpecDecodeScheduler : public LangScheduler {
                            const json& target_info) override;
   bool is_speculative() const override { return true; }
 
+  // B2.3 — late binding for AHASD + PIM. Simulator calls this after
+  // constructing the scheduler (both pointers may be null in the legacy
+  // build where AHASD is disabled; callers must be null-safe).
+  void attach_ahasd(AHASD::AHASDIntegration* ahasd, PIMBackend* pim);
+
   void cycle() override;
   std::unique_ptr<Model> pop_model() override;
   void finish_model(uint32_t model_id) override;
@@ -37,7 +47,8 @@ class SpecDecodeScheduler : public LangScheduler {
 
  protected:
   // Hooks for later milestones.
-  //   B2.3 will override pick_draft_length() with EDC's decision.
+  //   B2.3 overrides pick_draft_length() with EDC's decision when AHASD is
+  //     attached; the default implementation returns _default_draft_length.
   //   B2.5 will override sample_accepted_length() with the synthetic model.
   virtual uint32_t pick_draft_length(const LangRequest& req);
   virtual uint32_t sample_accepted_length(const LangRequest& req, uint32_t draft_length);
@@ -49,6 +60,7 @@ class SpecDecodeScheduler : public LangScheduler {
     const char* role = "single";
     uint32_t draft_length_at_issue = 0;
     uint32_t verify_round = 0;
+    uint64_t issue_cycle = 0;  // B2.3 — elapsed cycles fed into TVC tables.
   };
 
   std::unique_ptr<LanguageModel> _target_model;
@@ -60,6 +72,21 @@ class SpecDecodeScheduler : public LangScheduler {
 
   uint32_t _max_draft_length = 1;
   uint32_t _default_draft_length = 1;
+
+  // B2.3 — non-owning pointers injected by Simulator::attach_ahasd().
+  AHASD::AHASDIntegration* _ahasd = nullptr;
+  PIMBackend* _pim = nullptr;
+
+  // Per-request bookkeeping for B2.3 TVC pre-verify gating.
+  std::map<uint32_t, uint32_t> _pre_verified_in_round;  // request_id -> round idx last pre-verified
+  // Per-request rank mode tracker (0 = DLM bank, 1 = TLM bank); we only
+  // request a GTSU switch when the desired mode differs. Separate per
+  // request so co-scheduled requests do not thrash each other.
+  std::map<uint32_t, uint32_t> _last_rank_mode;
+
+  // Synthetic entropy hint for EDC (B2.3). Real entropy arrives once the
+  // synthetic acceptance model lands in B2.5.
+  float compute_entropy_hint(const LangRequest& req) const;
 
   // Step the state machine for one request; returns true if a model was issued.
   bool try_issue_one_task(LangRequest& req);

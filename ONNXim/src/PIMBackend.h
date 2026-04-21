@@ -60,9 +60,18 @@ class PIMBackend {
   uint64_t request_gtsu_switch(uint32_t cid, uint32_t new_mode, uint64_t npu_cycle);
   uint32_t rank_mode(uint32_t cid) const;
 
+  // B2.3 convenience: SpecDecodeScheduler flips every PIM-class channel
+  // together on DRAFT<->VERIFY phase boundaries. Returns the latest
+  // completion cycle across channels (caller may use it for observability).
+  uint64_t switch_all_pim_to(uint32_t new_mode, uint64_t npu_cycle);
+
   // Force a per-channel hold until `until_npu_cycle`. Used by TVC to model
   // PIM-side pre-verification window.
   void schedule_hold(uint32_t cid, uint64_t until_npu_cycle);
+
+  // B2.3 convenience: apply a hold to every PIM channel (TVC pre-verify
+  // window affects all attention-class traffic).
+  void schedule_hold_all_pim(uint64_t until_npu_cycle);
 
   // --- Statistics (also consumed by B2.4 energy model) ---
   struct Stats {

@@ -136,6 +136,25 @@ uint32_t PIMBackend::rank_mode(uint32_t cid) const {
   return _rank_mode[cid];
 }
 
+uint64_t PIMBackend::switch_all_pim_to(uint32_t new_mode, uint64_t npu_cycle) {
+  if (!_active) return npu_cycle;
+  uint64_t latest = npu_cycle;
+  for (uint32_t cid = 0; cid < _is_pim.size(); ++cid) {
+    if (!_is_pim[cid]) continue;
+    uint64_t done = request_gtsu_switch(cid, new_mode, npu_cycle);
+    if (done > latest) latest = done;
+  }
+  return latest;
+}
+
+void PIMBackend::schedule_hold_all_pim(uint64_t until_npu_cycle) {
+  if (!_active) return;
+  for (uint32_t cid = 0; cid < _is_pim.size(); ++cid) {
+    if (!_is_pim[cid]) continue;
+    schedule_hold(cid, until_npu_cycle);
+  }
+}
+
 void PIMBackend::schedule_hold(uint32_t cid, uint64_t until_npu_cycle) {
   if (!_active || !is_pim_channel(cid)) return;
   if (_per_channel_hold_until_npu[cid] < until_npu_cycle) {

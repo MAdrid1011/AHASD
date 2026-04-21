@@ -124,18 +124,10 @@ def parse_args():
                        help='Enable Time-Aware Pre-Verification Control')
     parser.add_argument('--enable-aau', action='store_true',
                        help='Enable Attention Algorithm Unit')
-    parser.add_argument('--enable-ssrc', action='store_true',
-                       help='Enable Speculative State Residency Control')
-    parser.add_argument('--enable-ssrc-proxy', action='store_true',
-                       help='Enable trace-level proxy draft events for SSRC accounting')
-    parser.add_argument('--enable-ssrc-trace', action='store_true',
-                       help='Enable language-scheduler-driven draft events for SSRC accounting')
-    parser.add_argument('--ssrc-state-bytes-per-token', type=int, default=524288,
-                       help='Estimated speculative KV/state bytes per token')
-    parser.add_argument('--ssrc-resident-limit-mb', type=float, default=32.0,
-                       help='SSRC speculative resident-state budget in MiB')
-    parser.add_argument('--ssrc-confidence-threshold', type=float, default=0.55,
-                       help='SSRC confidence threshold for resident materialization')
+    # B2.3: SSRC flags (--enable-ssrc, --enable-ssrc-proxy,
+    # --enable-ssrc-trace, --ssrc-state-bytes-per-token,
+    # --ssrc-resident-limit-mb, --ssrc-confidence-threshold) were removed
+    # with the sidecar.  F1 will reintroduce a real SSRC config block.
     
     # Hardware parameters
     parser.add_argument('--npu-freq', type=float, default=1000.0,
@@ -194,19 +186,10 @@ def create_config(args):
                 or args.enable_edc
                 or args.enable_tvc
                 or args.enable_aau
-                or args.enable_ssrc
-                or args.enable_ssrc_proxy
-                or args.enable_ssrc_trace
             ),
             "enable_edc": args.enable_edc,
             "enable_tvc": args.enable_tvc,
             "enable_aau": args.enable_aau,
-            "enable_ssrc": args.enable_ssrc,
-            "enable_ssrc_proxy": args.enable_ssrc_proxy,
-            "enable_ssrc_trace": args.enable_ssrc_trace,
-            "ssrc_state_bytes_per_token": args.ssrc_state_bytes_per_token,
-            "ssrc_resident_limit_bytes": int(args.ssrc_resident_limit_mb * 1024 * 1024),
-            "ssrc_confidence_threshold": args.ssrc_confidence_threshold,
             "pim_freq_mhz": args.pim_freq,
             "npu_freq_mhz": args.npu_freq,
             "max_draft_length": args.max_draft_length,
@@ -314,12 +297,6 @@ def create_onnxim_config(config, onnxim_root, output_dir):
     onnxim_config['enable_tvc'] = ahasd_config['enable_tvc']
     onnxim_config['enable_aau'] = ahasd_config['enable_aau']
     onnxim_config['max_draft_length'] = ahasd_config['max_draft_length']
-    onnxim_config['enable_ssrc'] = ahasd_config['enable_ssrc']
-    onnxim_config['enable_ssrc_proxy'] = ahasd_config['enable_ssrc_proxy']
-    onnxim_config['enable_ssrc_trace'] = ahasd_config['enable_ssrc_trace']
-    onnxim_config['ssrc_state_bytes_per_token'] = ahasd_config['ssrc_state_bytes_per_token']
-    onnxim_config['ssrc_resident_limit_bytes'] = ahasd_config['ssrc_resident_limit_bytes']
-    onnxim_config['ssrc_confidence_threshold'] = ahasd_config['ssrc_confidence_threshold']
 
     onnxim_config_file = os.path.join(output_dir, 'onnxim_config.json')
     with open(onnxim_config_file, 'w') as f:
@@ -415,10 +392,7 @@ def run_simulation(config, output_dir, verbose=False, dry_run=False):
     print(f"  Algorithm: {config['algorithm']}")
     print(f"  EDC: {config['ahasd']['enable_edc']}, "
           f"TVC: {config['ahasd']['enable_tvc']}, "
-          f"AAU: {config['ahasd']['enable_aau']}, "
-          f"SSRC: {config['ahasd']['enable_ssrc']}, "
-          f"SSRC proxy: {config['ahasd']['enable_ssrc_proxy']}, "
-          f"SSRC trace: {config['ahasd']['enable_ssrc_trace']}")
+          f"AAU: {config['ahasd']['enable_aau']}")
     
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -442,8 +416,6 @@ def run_simulation(config, output_dir, verbose=False, dry_run=False):
             print("    ✓ TVC module initialized [MOCK]")
         if config['ahasd']['enable_aau']:
             print("    ✓ AAU module initialized [MOCK]")
-        if config['ahasd']['enable_ssrc']:
-            print("    ✓ SSRC module initialized [MOCK]")
         
         # Generate mock results
         results = generate_mock_results(config)
@@ -478,10 +450,6 @@ def run_simulation(config, output_dir, verbose=False, dry_run=False):
         print("    ✓ TVC module initialized")
     if config['ahasd']['enable_aau']:
         print("    ✓ AAU module initialized")
-    if config['ahasd']['enable_ssrc']:
-        print("    ✓ SSRC module initialized")
-    if config['ahasd']['enable_ssrc_proxy']:
-        print("    ✓ SSRC proxy draft events enabled")
     
     print("\n  Running simulation...")
     
@@ -718,162 +686,28 @@ def parse_simulation_log(log_file, config):
                 if match := re.search(r'TVC.*Success.*:\s*(\d+).*\(([\d.]+)%\)', content):
                     results['tvc_stats']['success_rate'] = float(match.group(2)) / 100.0
 
-            # Parse SSRC residency-control statistics if enabled
-            if (
-                config['ahasd']['enable_ssrc']
-                or config['ahasd']['enable_ssrc_proxy']
-                or config['ahasd']['enable_ssrc_trace']
-            ) and 'SSRC Statistics' in content:
-                results['ssrc_stats'] = {}
-                ssrc_patterns = {
-                    'baseline_materialized_bytes': r'SSRC Baseline Materialized Bytes:\s*(\d+)',
-                    'actual_materialized_bytes': r'SSRC Actual Materialized Bytes:\s*(\d+)',
-                    'avoided_materialization_bytes': r'SSRC Avoided Materialization Bytes:\s*(\d+)',
-                    'reclaimed_bytes': r'SSRC Reclaimed Bytes:\s*(\d+)',
-                    'resident_current_bytes': r'SSRC Resident Current Bytes:\s*(\d+)',
-                    'resident_peak_bytes': r'SSRC Resident Peak Bytes:\s*(\d+)',
-                    'committed_bytes': r'SSRC Committed Bytes:\s*(\d+)',
-                    'resident_batches': r'SSRC Resident Batches:\s*(\d+)',
-                    'deferred_batches': r'SSRC Deferred Batches:\s*(\d+)',
-                    'prefetched_batches': r'SSRC Prefetched Batches:\s*(\d+)',
-                    'reclaimed_batches': r'SSRC Reclaimed Batches:\s*(\d+)',
-                    'modeled_dram_request_size_bytes': r'SSRC Modeled DRAM Request Size Bytes:\s*(\d+)',
-                    'modeled_dram_latency_cycles': r'SSRC Modeled DRAM Latency Cycles:\s*(\d+)',
-                    'modeled_dram_request_equiv': r'SSRC Modeled DRAM Request Equiv:\s*(\d+)',
-                    'raw_total_cycles': r'SSRC Raw Total Cycles:\s*(\d+)',
-                    'modeled_unclamped_avoided_memory_cycles': r'SSRC Modeled Unclamped Avoided Memory Cycles:\s*(\d+)',
-                    'modeled_upper_bound_avoided_memory_cycles': r'SSRC Modeled Upper Bound Avoided Memory Cycles:\s*(\d+)',
-                    'modeled_upper_bound_adjusted_cycles': r'SSRC Modeled Upper Bound Adjusted Cycles:\s*(\d+)',
-                    'modeled_avoided_memory_cycles': r'SSRC Modeled Avoided Memory Cycles:\s*(\d+)',
-                    'modeled_adjusted_cycles': r'SSRC Modeled Adjusted Cycles:\s*(\d+)',
-                }
-                for key, pattern in ssrc_patterns.items():
-                    if match := re.search(pattern, content):
-                        results['ssrc_stats'][key] = int(match.group(1))
-                        results['metrics'][f'ssrc_{key}'] = int(match.group(1))
-                ssrc_ratio_patterns = {
-                    'materialization_avoidance_ratio': r'SSRC Materialization Avoidance Ratio:\s*([\d.eE+-]+)',
-                    'modeled_upper_bound_cycle_reduction_ratio': r'SSRC Modeled Upper Bound Cycle Reduction Ratio:\s*([\d.eE+-]+)',
-                    'modeled_cycle_reduction_ratio': r'SSRC Modeled Cycle Reduction Ratio:\s*([\d.eE+-]+)',
-                }
-                for key, pattern in ssrc_ratio_patterns.items():
-                    if match := re.search(pattern, content):
-                        value = float(match.group(1))
-                        results['ssrc_stats'][key] = value
-                        results['metrics'][f'ssrc_{key}'] = value
-                if match := re.search(
-                    r'SSRC Metric Quality:\s*([A-Za-z0-9_\-]+)',
-                    content,
-                ):
-                    value = match.group(1)
-                    results['ssrc_stats']['metric_quality'] = value
-                    results['metrics']['ssrc_metric_quality'] = value
-                    results.setdefault('metric_quality', {})['ssrc_metric_quality'] = value
-                    add_metric_note(
-                        "SSRC modeled cycle metrics are sidecar diagnostics and are not raw ONNXim cycle coupling."
-                    )
+            # B2.3: the SSRC sidecar was removed. F1 will reintroduce its own
+            # (real-coupling) SSRC log block and result-parser.
 
-            request_identity_marker = 'SSRC Request Identity'
-            if request_identity_marker in content:
-                results['request_identity_stats'] = {}
-                request_identity_patterns = {
-                    'bridge_active': r'SSRC Request Identity Bridge Active:\s*(\d+)',
-                    'tagged_requests': r'SSRC Request Identity Tagged Requests:\s*(\d+)',
-                    'tagged_bytes': r'SSRC Request Identity Tagged Bytes:\s*(\d+)',
-                    'tagged_read_bytes': r'SSRC Request Identity Tagged Read Bytes:\s*(\d+)',
-                    'tagged_write_bytes': r'SSRC Request Identity Tagged Write Bytes:\s*(\d+)',
+            # Attention-class (KV cache) traffic counters — used by AAU
+            # fusion accounting in PIMBackend and by B2.4's energy model.
+            if 'Attention-Class Tagged Requests' in content:
+                results['attention_class_stats'] = {}
+                attn_patterns = {
+                    'tagged_requests': r'Attention-Class Tagged Requests:\s*(\d+)',
+                    'tagged_bytes': r'Attention-Class Tagged Bytes:\s*(\d+)',
+                    'tagged_read_bytes': r'Attention-Class Tagged Read Bytes:\s*(\d+)',
+                    'tagged_write_bytes': r'Attention-Class Tagged Write Bytes:\s*(\d+)',
                 }
-                for key, pattern in request_identity_patterns.items():
+                for key, pattern in attn_patterns.items():
                     if match := re.search(pattern, content):
                         value = int(match.group(1))
-                        results['request_identity_stats'][key] = value
-                        results['metrics'][f'request_identity_{key}'] = value
-
-                if match := re.search(
-                    r'SSRC Request Identity Tagged Class:\s*([A-Za-z0-9_\-]+)',
-                    content,
-                ):
-                    tagged_class = match.group(1)
-                    results['request_identity_stats']['tagged_class'] = tagged_class
-                    results['metrics']['request_identity_tagged_class'] = tagged_class
-
+                        results['attention_class_stats'][key] = value
+                        results['metrics'][f'attention_class_{key}'] = value
                 add_metric_note(
-                    "request_identity_* metrics are attribution diagnostics derived from SSRC request-tag summary lines."
+                    "attention_class_* metrics count KV-cache memory traffic tagged by "
+                    "KVCacheConcat; PIMBackend uses the same tag to drive AAU fusion accounting."
                 )
-
-            trace_semantic_marker = 'SSRC Trace Semantic'
-            if trace_semantic_marker in content:
-                results['trace_semantic_stats'] = {}
-                trace_semantic_patterns = {
-                    'active': r'SSRC Trace Semantic Active:\s*(\d+)',
-                    'resident_batches': r'SSRC Trace Semantic Resident Batches:\s*(\d+)',
-                    'deferred_batches': r'SSRC Trace Semantic Deferred Batches:\s*(\d+)',
-                    'prefetched_batches': r'SSRC Trace Semantic Prefetched Batches:\s*(\d+)',
-                    'reclaimed_batches': r'SSRC Trace Semantic Reclaimed Batches:\s*(\d+)',
-                    'accepted_bytes': r'SSRC Trace Semantic Accepted Bytes:\s*(\d+)',
-                    'total_state_bytes': r'SSRC Trace Semantic Total State Bytes:\s*(\d+)',
-                    'resident_state_bytes': r'SSRC Trace Semantic Resident State Bytes:\s*(\d+)',
-                    'deferred_state_bytes': r'SSRC Trace Semantic Deferred State Bytes:\s*(\d+)',
-                    'prefetched_state_bytes': r'SSRC Trace Semantic Prefetched State Bytes:\s*(\d+)',
-                    'reclaimed_state_bytes': r'SSRC Trace Semantic Reclaimed State Bytes:\s*(\d+)',
-                    'unique_requests': r'SSRC Trace Semantic Unique Requests:\s*(\d+)',
-                }
-                for key, pattern in trace_semantic_patterns.items():
-                    if match := re.search(pattern, content):
-                        value = int(match.group(1))
-                        results['trace_semantic_stats'][key] = value
-                        results['metrics'][f'trace_semantic_{key}'] = value
-
-                trace_semantic_ratio_patterns = {
-                    'avg_queue_pressure': r'SSRC Trace Semantic Avg Queue Pressure:\s*([\d.eE+-]+)',
-                    'avg_residency_pressure': r'SSRC Trace Semantic Avg Residency Pressure:\s*([\d.eE+-]+)',
-                    'avg_tvc_slack_proxy': r'SSRC Trace Semantic Avg TVC Slack Proxy:\s*([\d.eE+-]+)',
-                    'avg_previous_length': r'SSRC Trace Semantic Avg Previous Length:\s*([\d.eE+-]+)',
-                    'avg_current_length': r'SSRC Trace Semantic Avg Current Length:\s*([\d.eE+-]+)',
-                    'avg_target_length': r'SSRC Trace Semantic Avg Target Length:\s*([\d.eE+-]+)',
-                }
-                for key, pattern in trace_semantic_ratio_patterns.items():
-                    if match := re.search(pattern, content):
-                        value = float(match.group(1))
-                        results['trace_semantic_stats'][key] = value
-                        results['metrics'][f'trace_semantic_{key}'] = value
-
-                add_metric_note(
-                    "trace_semantic_* metrics are decision-aware observability diagnostics derived from trace-valid SSRC batches."
-                )
-            if 'ssrc_stats' in results and 'request_identity_stats' in results:
-                avoided_materialization_bytes = results['ssrc_stats'].get('avoided_materialization_bytes')
-                tagged_write_bytes = results['request_identity_stats'].get('tagged_write_bytes')
-                if isinstance(avoided_materialization_bytes, int) and isinstance(tagged_write_bytes, int):
-                    overlap_upper_bound_bytes = min(
-                        avoided_materialization_bytes,
-                        tagged_write_bytes,
-                    )
-                    overlap_stats = {
-                        'upper_bound_bytes': overlap_upper_bound_bytes,
-                        'coverage_gap_bytes': abs(
-                            avoided_materialization_bytes - tagged_write_bytes
-                        ),
-                        'upper_bound_vs_avoided_ratio': (
-                            float(overlap_upper_bound_bytes) / float(avoided_materialization_bytes)
-                            if avoided_materialization_bytes > 0
-                            else 0.0
-                        ),
-                        'upper_bound_vs_tagged_write_ratio': (
-                            float(overlap_upper_bound_bytes) / float(tagged_write_bytes)
-                            if tagged_write_bytes > 0
-                            else 0.0
-                        ),
-                    }
-                    results['ssrc_request_overlap_stats'] = overlap_stats
-                    for key, value in overlap_stats.items():
-                        results['metrics'][f'ssrc_request_overlap_{key}'] = value
-
-                    add_metric_note(
-                        "ssrc_request_overlap_* metrics are derived attribution bounds from "
-                        "ssrc_avoided_materialization_bytes and request_identity_tagged_write_bytes; "
-                        "they are upper-bound overlap diagnostics, not exact per-request intersections."
-                    )
     
     except Exception as e:
         print(f"    Warning: Error parsing simulation log: {e}")
