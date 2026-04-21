@@ -39,6 +39,10 @@ SpecDecodeScheduler::SpecDecodeScheduler(std::string name, std::string path,
   }
   spdlog::info("[SpecDecode] max_draft_length={} default_draft_length={}",
                _max_draft_length, _default_draft_length);
+  // B2.5 — bring up the synthetic acceptance model with whatever coeffs
+  // live in SimulationConfig. Parametric by default; trace-replay and
+  // trace_then_parametric kick in once `accept_trace_path` is set.
+  _accept_model.load_from_config(_config);
 }
 
 bool SpecDecodeScheduler::attach_target_model(std::unique_ptr<LanguageModel> target_model,
@@ -101,11 +105,42 @@ uint32_t SpecDecodeScheduler::pick_draft_length(const LangRequest& req) {
 
 uint32_t SpecDecodeScheduler::sample_accepted_length(const LangRequest& req,
                                                      uint32_t draft_length) {
-  // B2.5 will replace this with a trace-driven or synthetic sampler.
-  // Placeholder: accept half of the draft tokens (rounded up), capped by target.
-  (void)req;
+  // B2.5 — SyntheticAcceptanceModel now drives acceptance. We pass the
+  // scheduler's entropy hint (same one EDC saw when it picked k) so the
+  // parametric sampler and EDC are consistent: higher entropy ⇒ lower
+  // base acceptance probability ⇒ fewer accepted tokens, exactly the
+  // dynamic that makes EDC on/off differentiate `total_cycles`.
   if (draft_length == 0) return 0;
-  return std::max<uint32_t>(1u, (draft_length + 1u) / 2u);
+  const float entropy_hint = compute_entropy_hint(req);
+  const uint32_t accepted = _accept_model.sample(req.request_id, req.spec_round,
+                                                  draft_length, entropy_hint);
+  _accept_samples += 1;
+  _accept_sum     += accepted;
+  _accept_k_sum   += draft_length;
+  return accepted;
+}
+
+void SpecDecodeScheduler::print_acceptance_stats() const {
+  const char* mode = "parametric";
+  switch (_accept_model.mode()) {
+    case ahasd_accept::AcceptanceMode::TRACE_REPLAY: mode = "trace_replay"; break;
+    case ahasd_accept::AcceptanceMode::TRACE_THEN_PARAMETRIC: mode = "trace_then_parametric"; break;
+    default: break;
+  }
+  const double mean_accept =
+      _accept_samples > 0 ? static_cast<double>(_accept_sum) / _accept_samples : 0.0;
+  const double mean_k =
+      _accept_samples > 0 ? static_cast<double>(_accept_k_sum) / _accept_samples : 0.0;
+  const double accept_ratio =
+      _accept_k_sum > 0 ? static_cast<double>(_accept_sum) / _accept_k_sum : 0.0;
+  spdlog::info("=== Synthetic Acceptance Stats (B2.5) ===");
+  spdlog::info("Acceptance Mode: {} (trace_rows={})", mode,
+               _accept_model.trace_rows_loaded());
+  spdlog::info("Acceptance Samples: {} | mean_k={:.3f} | mean_accepted={:.3f} | accept_ratio={:.4f}",
+               _accept_samples, mean_k, mean_accept, accept_ratio);
+  const auto& c = _accept_model.coeffs();
+  spdlog::info("Acceptance Coeffs: base={:.3f} alpha={:.3f} length_decay={:.3f} p_min={:.3f}",
+               c.base, c.alpha, c.length_decay, c.p_min);
 }
 
 bool SpecDecodeScheduler::busy() {
@@ -345,6 +380,10 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
   event.model_role = meta.role;
   event.draft_length = meta.draft_length_at_issue;
   event.spec_round = meta.verify_round;
+  // B2.5 — emit the entropy hint the scheduler used for this request so
+  // downstream consumers (log parsers, trace generators that feed back)
+  // see the same value the acceptance model saw.
+  event.avg_entropy = compute_entropy_hint(req);
 
   switch (meta.task_type) {
     case LangTaskType::PROMPT: {

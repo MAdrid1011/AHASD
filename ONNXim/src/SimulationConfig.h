@@ -115,6 +115,22 @@ struct SimulationConfig {
   double energy_bus_pj_per_byte = 40.0;
   double energy_gtsu_switch_pj_per_event = 20000.0;
 
+  /* B2.5 — synthetic acceptance model.
+   *   accept_mode: "parametric" | "trace_replay" | "trace_then_parametric"
+   *   accept_base/alpha/length_decay/p_min: parametric curve coefficients
+   *   accept_rng_seed: determinism knob so different runs with the same
+   *                    seed sample identical accepted_length sequences
+   *   accept_trace_path: optional CSV of (round,draft_length,avg_entropy,
+   *                      accepted_length) rows; unused in pure parametric
+   */
+  std::string accept_mode = "parametric";
+  double accept_base = 0.85;
+  double accept_entropy_alpha = 0.12;
+  double accept_length_decay = 0.30;
+  double accept_p_min = 0.05;
+  uint64_t accept_rng_seed = 0x5A5A5A5A5A5A5A5AULL;
+  std::string accept_trace_path = "";
+
   /*
    * This map stores the partition information: <partition_id, core_id>
    *

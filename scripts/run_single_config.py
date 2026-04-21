@@ -690,6 +690,19 @@ def parse_simulation_log(log_file, config):
             
             if match := re.search(r'Average Draft Entropy:\s*([\d.]+)', content):
                 results['metrics']['average_entropy'] = float(match.group(1))
+
+            # B2.5 — synthetic acceptance model stats (best-effort parse;
+            # absent on legacy/non-speculative runs ⇒ keys simply skipped).
+            if match := re.search(r'Acceptance Mode:\s*([A-Za-z_]+)\s*\(trace_rows=(\d+)\)', content):
+                results['metrics']['acceptance_mode'] = match.group(1)
+                results['metrics']['acceptance_trace_rows'] = int(match.group(2))
+            if match := re.search(
+                    r'Acceptance Samples:\s*(\d+)\s*\|\s*mean_k=([\d.]+)\s*\|\s*mean_accepted=([\d.]+)\s*\|\s*accept_ratio=([\d.]+)',
+                    content):
+                results['metrics']['acceptance_samples'] = int(match.group(1))
+                results['metrics']['acceptance_mean_k'] = float(match.group(2))
+                results['metrics']['acceptance_mean_accepted'] = float(match.group(3))
+                results['metrics']['acceptance_ratio'] = float(match.group(4))
             
             # Parse EDC statistics if enabled
             if config['ahasd']['enable_edc'] and 'EDC Statistics' in content:

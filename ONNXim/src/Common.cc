@@ -186,6 +186,24 @@ SimulationConfig initialize_config(json config) {
   if (config.contains("energy_gtsu_switch_pj_per_event"))
     parsed_config.energy_gtsu_switch_pj_per_event = config["energy_gtsu_switch_pj_per_event"];
 
+  /* B2.5 — synthetic acceptance model. All optional; defaults in
+   * SimulationConfig.h match the paper-era SpecDec 0.85 base acceptance.
+   */
+  if (config.contains("accept_mode"))
+    parsed_config.accept_mode = config["accept_mode"].get<std::string>();
+  if (config.contains("accept_base"))
+    parsed_config.accept_base = config["accept_base"];
+  if (config.contains("accept_entropy_alpha"))
+    parsed_config.accept_entropy_alpha = config["accept_entropy_alpha"];
+  if (config.contains("accept_length_decay"))
+    parsed_config.accept_length_decay = config["accept_length_decay"];
+  if (config.contains("accept_p_min"))
+    parsed_config.accept_p_min = config["accept_p_min"];
+  if (config.contains("accept_rng_seed"))
+    parsed_config.accept_rng_seed = config["accept_rng_seed"].get<uint64_t>();
+  if (config.contains("accept_trace_path"))
+    parsed_config.accept_trace_path = config["accept_trace_path"].get<std::string>();
+
   if (config.contains("partition")) {
     for (int i=0; i<parsed_config.num_cores; i++) {
       std::string core_partition = "core_" + std::to_string(i);

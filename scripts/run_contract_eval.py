@@ -62,6 +62,13 @@ METRIC_KEYS = [
     "attention_class_tagged_bytes",
     "attention_class_tagged_read_bytes",
     "attention_class_tagged_write_bytes",
+    # B2.5 — synthetic acceptance model stats.
+    "acceptance_mode",
+    "acceptance_trace_rows",
+    "acceptance_samples",
+    "acceptance_mean_k",
+    "acceptance_mean_accepted",
+    "acceptance_ratio",
 ]
 
 

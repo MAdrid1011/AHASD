@@ -341,6 +341,13 @@ void Simulator::cycle() {
   if (_cosim) {
     _cosim->print_statistics(_core_cycles);
   }
+  // B2.5 — synthetic acceptance model summary. Only present in speculative
+  // language mode; silent otherwise so legacy runs don't gain noise.
+  if (_lang_scheduler && _lang_scheduler->is_speculative()) {
+    if (auto* spec = dynamic_cast<SpecDecodeScheduler*>(_lang_scheduler.get())) {
+      spec->print_acceptance_stats();
+    }
+  }
 
   // B2.4 — assemble final energy aggregate and emit `Total Energy` line.
   // Core stats were updated by print_stats() above, so `_stat_tot_*` reflect
