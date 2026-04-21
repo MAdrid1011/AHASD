@@ -328,15 +328,26 @@ def create_onnxim_config(config, onnxim_root, output_dir):
     return onnxim_config_file
 
 def create_language_model_list(config, onnxim_root, output_dir):
-    # ONNXim language mode owns one scheduler; use the draft model for smoke validation.
-    model_name = config['model']['draft']
-    model_config_file = ensure_language_model_config(model_name, onnxim_root)
+    """B2.1: register BOTH draft and target models so the simulator can run
+    a speculative decoding scheduler (role="draft" first creates the scheduler,
+    role="target" attaches to it). For legacy smoke runs where the caller has
+    not requested speculative mode, we keep the simple scheduler path with the
+    draft model only.
+    """
+    draft_name = config['model']['draft']
+    target_name = config['model'].get('target')
+
+    draft_config_file = ensure_language_model_config(draft_name, onnxim_root)
     trace_name, trace_file = create_language_trace(config, onnxim_root)
 
-    model_list = {
-        "models": [
+    scheduler_type = config.get('simulation', {}).get('scheduler', 'spec')
+    # Accept speculative scheduler by default when target is available — this
+    # matches the Path B intent. Fall back to "simple" if the user explicitly
+    # asked for it or no target model is supplied.
+    if not target_name or scheduler_type == 'simple':
+        model_entries = [
             {
-                "name": model_name,
+                "name": draft_name,
                 "trace_file": trace_name,
                 "scheduler": "simple",
                 "scheduler_config": {
@@ -345,20 +356,53 @@ def create_language_model_list(config, onnxim_root, output_dir):
                 },
             }
         ]
-    }
+        simulated_role = "single"
+        target_config_file = None
+    else:
+        target_config_file = ensure_language_model_config(target_name, onnxim_root)
+        scheduler_name = scheduler_type if scheduler_type in ('spec', 'iter') else 'spec'
+        common_scheduler_cfg = {
+            "max_batch_size": config['simulation']['batch_size'],
+            "check_mem_size": False,
+            "default_draft_length": config['ahasd'].get('max_draft_length', 8),
+        }
+        # The first entry creates the scheduler; the second attaches TLM.
+        model_entries = [
+            {
+                "name": draft_name,
+                "role": "draft",
+                "trace_file": trace_name,
+                "scheduler": scheduler_name,
+                "scheduler_config": common_scheduler_cfg,
+            },
+            {
+                "name": target_name,
+                "role": "target",
+                "trace_file": trace_name,
+                "scheduler": scheduler_name,
+                "scheduler_config": common_scheduler_cfg,
+            },
+        ]
+        simulated_role = "draft+target (spec)"
+
+    model_list = {"models": model_entries}
     model_list_file = os.path.join(output_dir, 'models_list.json')
     with open(model_list_file, 'w') as f:
         json.dump(model_list, f, indent=2)
 
     metadata = {
-        "simulated_language_model": model_name,
-        "simulated_model_role": "draft",
-        "target_model_recorded_only": config['model']['target'],
-        "model_config_file": model_config_file,
+        "simulated_language_models": [entry["name"] for entry in model_entries],
+        "simulated_model_role": simulated_role,
+        "draft_model": draft_name,
+        "target_model": target_name,
+        "draft_model_config_file": draft_config_file,
+        "target_model_config_file": target_config_file,
         "trace_file": trace_file,
         "trace_note": (
             "Generated minimal ONNXim language trace for real-simulator smoke; "
-            "it is not a full Alpaca trace reproduction."
+            "it is not a full Alpaca trace reproduction. B2.5 will replace it "
+            "with per-round (round, draft_length, avg_entropy, accepted_length) "
+            "data driven by the synthetic acceptance model."
         ),
     }
     return model_list_file, trace_name, metadata

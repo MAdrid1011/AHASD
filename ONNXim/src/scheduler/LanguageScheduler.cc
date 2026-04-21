@@ -1,5 +1,6 @@
 #include "LanguageScheduler.h"
 #include "IterLevelScheduler.h"
+#include "SpecDecodeScheduler.h"
 #include <fstream>
 
 std::unique_ptr<LangScheduler> LangScheduler::create(std::string name, std::string path, 
@@ -14,11 +15,28 @@ std::unique_ptr<LangScheduler> LangScheduler::create(std::string name, std::stri
     spdlog::info("Iter Language scheduler selected");
     return std::make_unique<IterLevelScheduler>(name, path, std::move(model), config, info["scheduler_config"]);
   }
+  else if(info["scheduler"] == "spec") {
+    // B2.1: speculative decoding scheduler. Target model is attached later via
+    // Simulator::register_language_model(role="target") -> attach_target_model.
+    spdlog::info("Speculative decoding language scheduler selected");
+    return std::make_unique<SpecDecodeScheduler>(name, path, std::move(model), config, info["scheduler_config"]);
+  }
   else {
     spdlog::error("Invalid scheduler type: {}", info["scheduler"]);
     throw std::runtime_error("Invalid scheduler type");
     return nullptr;
   }
+}
+
+bool LangScheduler::attach_target_model(std::unique_ptr<LanguageModel> target_model,
+                                        const json& target_info) {
+  // Base class is single-model; reject attach so the caller can fall back to
+  // running only the draft model (legacy behaviour).
+  (void)target_model;
+  (void)target_info;
+  spdlog::warn("attach_target_model called on non-speculative scheduler '{}'; target model ignored.",
+               _name);
+  return false;
 }
 
 LangScheduler::LangScheduler(std::string name, std::string path, std::unique_ptr<LanguageModel> model, 
