@@ -1,3 +1,6 @@
+# Workflow (local planning, not tracked)
+workflow/
+
 # Build directories
 build/
 *.o
