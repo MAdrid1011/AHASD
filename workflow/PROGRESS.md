@@ -347,10 +347,24 @@
   - `workflow/runs/issue15/{ahasd_bypass, mb_opt125m/{npu_only,pim_only,ahasd_noaau,ahasd_full}, mb_13b/{npu_only,ahasd_full}}`
 - **状态**：✅ 已完成（架构修复落地，规模化到 D1 再验收 speedup）
 
-### C2 — W4 重跑 SOTA 对比实验
-- **目标**：vs SpecPIM 提升到 1.8-2.0×
-- **状态**：🔲 未开始
-- **结果**：（待填写）
+### C2 — SpecPIM baseline（W4 SOTA 对比 placeholder）
+- **做法**：committed overlay + SpecDecodeScheduler rank-switch 门控修复
+- **关键修复（2026-04-21）**：
+  - ✅ `SpecDecodeScheduler::request_rank_switch` 原本只检查 `_pim`，不检查 `_ahasd` ⇒ pim_only 场景也会付 GTSU 切换周期 —— 这和 SpecPIM 论文「静态 PIM 通道分配」语义相悖。现在加 `if (_ahasd == nullptr) return;`，把 GTSU 严格定义为 AHASD-only feature
+  - ✅ 新 overlay `configs/baselines/specpim.json`：`_doc` 明确标识为 W4 SOTA 参考基线；`pim_enable + pim_enable_aau_fusion=true`（SpecPIM 确实用 PIM 加速 attention）+ `enable_ahasd/edc/tvc/aau=false`（静态调度 + 固定 k=4）
+- **C2 冒烟 4 轴（opt-125m, smoke_p4_g8_2req, max_k=4, 参数化）**：
+
+  | 轴 | cycles | energy_mJ | gtsu_switches | aau_fused |
+  |----|--------|-----------|---------------|-----------|
+  | npu_only | 5,139,558 | 128.88 | 0 | 0 |
+  | pim_only | 5,153,696 | 149.79 | **0** (修复前 216) | 45,792 |
+  | specpim | 5,141,743 | 149.78 | **0** | 45,792 |
+  | ahasd_full | 5,141,793 | 149.81 | 216（保留，回归守门通过） | 45,792 |
+
+  - `pim_only` 与 `specpim` 配置文件语义等价，只是 `_doc` 区分角色（一个是"W5 消融轴"一个是"W4 SOTA 对比"），cycle 差 12K 属 C1 已记录的 ~0.5% drift
+  - ahasd_full GTSU 开关 216 次保留（回归守门）
+- **状态**：✅ 已完成（overlay + 门控修复，W4 speedup 数据等 D1/D2 大 workload 矩阵统一产出）
+- **产物**：`configs/baselines/specpim.json`、`ONNXim/src/scheduler/SpecDecodeScheduler.cc` (rank-switch 门控)、`workflow/runs/c2/{npu_only,pim_only,specpim,ahasd_full}/`
 
 ### C3 — W3/W9 图表数据提取
 - **目标**：从 cycle-accurate trace 提取 NPU/PIM idle 比例 + 带宽利用率
@@ -414,3 +428,4 @@
 | 2026-04-21 | B2.3 完成：杀 sidecar，EDC/TVC/AAU/GTSU 真进调度决策路径；修复 B2.1 遗留的 `_requests_in_model.find(req.request_id)` 误用 bug（导致 Simulator 队列被重复任务灌满）；冒烟产出 `AHASD Cycle Coupling: real_coupling` + 真实 GTSU 切换 56 次/165k 周期阻塞 |
 | 2026-04-21 | B2.4 完成：新增 `EnergyModel.{h,cc}` + 9 个 `energy_*` LUT 系数 + `SimulationConfig` / `Common.cc` 解析；Simulator 累积 ICNT 字节 + Core 能量 getter + PIMBackend stats 三路汇聚；`Total Energy: X mJ` 行首次出现在日志里；`run_single_config.py` 新增 11 条 breakdown 正则，`run_contract_eval.py` METRIC_KEYS 加 11 个子字段；冒烟产出 `Total Energy: 18.5439 mJ`（opt-125m/opt-125m-t smoke） |
 | 2026-04-21 | C1.5 完成（issue #15）：`Attention.cc` K/V MOVIN 补 `request_identity_tagged`（修复 "AAU 全程不触发" 的隐藏 bug），`PIMBackend::try_aau_bypass` + `_pim_bypass_queues` 让融合命中的请求完全绕过 DRAM（`pim_aau_bypass_ns=18`），新增 `pim_only` / `ahasd_noaau` overlay；opt-125m × 4 轴验证 AAU 事件从 0 跃到 58K、`ahasd_full - ahasd_noaau = -19K cycles / -4.7 mJ`；opt-1.3b probe 事件 10× 放大（45K→538K），但 p16/g32 规模仍不足以显 speedup — speedup 验收下沉到 D1 大 workload |
+| 2026-04-21 | C2 完成（issue #17）：`SpecDecodeScheduler::request_rank_switch` 加 `if (_ahasd == nullptr) return;` 门控，把 GTSU 定义为 AHASD-only 机制（pim_only 不再付 GTSU 周期，与 SpecPIM 论文静态通道分配语义一致）；新 overlay `configs/baselines/specpim.json` 作为 W4 SOTA 对比参考；冒烟 4 轴确认 pim_only/specpim GTSU switches 从 216 降到 0，ahasd_full 仍保留 216 次（回归守门） |

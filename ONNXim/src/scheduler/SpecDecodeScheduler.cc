@@ -202,6 +202,12 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
   // completes, which is the real cycle-coupling mechanism.
   auto request_rank_switch = [&](uint32_t desired_mode) {
     if (_pim == nullptr || !_pim->is_active()) return;
+    // GTSU rank-mode switching is part of AHASD's dynamic scheduling
+    // contract (see Section 4.1 of AHASPro). Static-allocation baselines
+    // like SpecPIM / pim_only keep DLM and TLM on disjoint PIM regions
+    // and never pay a switch cost; only request a switch when AHASD is
+    // actually driving scheduling decisions.
+    if (_ahasd == nullptr) return;
     auto it = _last_rank_mode.find(req.request_id);
     uint32_t current = (it == _last_rank_mode.end()) ? 0u : it->second;
     if (current == desired_mode) return;
