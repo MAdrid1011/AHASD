@@ -20,7 +20,7 @@
 
 // B2.3: forward declarations so we do not leak AHASD / PIM headers via the
 // scheduler interface (Simulator.cc injects them via attach_ahasd()).
-namespace AHASD { class AHASDIntegration; }
+namespace AHASD { class AHASDIntegration; class SSRCCoordinator; }
 class PIMBackend;
 
 class SpecDecodeScheduler : public LangScheduler {
@@ -39,6 +39,11 @@ class SpecDecodeScheduler : public LangScheduler {
   // constructing the scheduler (both pointers may be null in the legacy
   // build where AHASD is disabled; callers must be null-safe).
   void attach_ahasd(AHASD::AHASDIntegration* ahasd, PIMBackend* pim);
+
+  // F1 — late binding for SSRC. Simulator calls this alongside attach_ahasd.
+  // nullptr is valid (SSRC coordinator present but disabled is also OK;
+  // `is_enabled()` guards every code path inside the scheduler).
+  void attach_ssrc(AHASD::SSRCCoordinator* ssrc);
 
   void cycle() override;
   std::unique_ptr<Model> pop_model() override;
@@ -81,6 +86,12 @@ class SpecDecodeScheduler : public LangScheduler {
   // B2.3 — non-owning pointers injected by Simulator::attach_ahasd().
   AHASD::AHASDIntegration* _ahasd = nullptr;
   PIMBackend* _pim = nullptr;
+  // F1 — non-owning pointer injected by Simulator::attach_ssrc().
+  AHASD::SSRCCoordinator* _ssrc = nullptr;
+  // Per-request: which (spec_round) we most recently asked SSRC to defer.
+  // Used to invoke on_round_verified with the right round even when the
+  // scheduler has already advanced spec_phase for the next round.
+  std::map<uint32_t, uint32_t> _ssrc_deferred_round;
 
   // Per-request bookkeeping for B2.3 TVC pre-verify gating.
   std::map<uint32_t, uint32_t> _pre_verified_in_round;  // request_id -> round idx last pre-verified

@@ -10,6 +10,7 @@
 #include "AHASDIntegration.h"
 #include "CoSimDriver.h"
 #include "EnergyModel.h"
+#include "SSRC.h"
 #include <queue>
 #include <tuple>
 
@@ -83,6 +84,15 @@ class Simulator {
   // never hit DRAM; Simulator routes them directly into the ICNT response
   // path once ready_cycle <= _core_cycles.
   std::vector<std::queue<std::pair<uint64_t, MemoryAccess*>>> _pim_bypass_queues;
+  // F1 — SSRC bypass queue: deferred attention-class writes that SSRC
+  // absorbs at the PIM boundary. Same plumbing as the AAU bypass queue but
+  // uses `ssrc_bypass_latency_npu_cycles()` which is tuned independently.
+  std::vector<std::queue<std::pair<uint64_t, MemoryAccess*>>> _pim_ssrc_bypass_queues;
+
+  // F1 — SSRC coordinator. Owned by Simulator, attached to both the
+  // PIMBackend (for per-request is-deferred lookups) and the
+  // SpecDecodeScheduler (for defer decisions + commit/discard).
+  std::unique_ptr<AHASD::SSRCCoordinator> _ssrc;
 
   // Icnt stat
   uint64_t _nr_from_core=0;

@@ -179,6 +179,18 @@ SimulationConfig initialize_config(json config) {
   if (config.contains("pim_aau_bypass_ns"))
     parsed_config.pim_aau_bypass_ns = config["pim_aau_bypass_ns"];
 
+  /* F1 — SSRC (all optional; absent keys = SSRC OFF, bit-identical behaviour). */
+  if (config.contains("ssrc_enable"))
+    parsed_config.ssrc_enable = config["ssrc_enable"];
+  if (config.contains("ssrc_confidence_threshold"))
+    parsed_config.ssrc_confidence_threshold = config["ssrc_confidence_threshold"];
+  if (config.contains("ssrc_state_bytes_per_token"))
+    parsed_config.ssrc_state_bytes_per_token = config["ssrc_state_bytes_per_token"];
+  if (config.contains("ssrc_resident_limit_bytes"))
+    parsed_config.ssrc_resident_limit_bytes = config["ssrc_resident_limit_bytes"];
+  if (config.contains("ssrc_bypass_ns"))
+    parsed_config.ssrc_bypass_ns = config["ssrc_bypass_ns"];
+
   /* B2.4 — energy model coefficients (LUT, per pJ). All optional. */
   if (config.contains("energy_npu_active_pj_per_cycle"))
     parsed_config.energy_npu_active_pj_per_cycle = config["energy_npu_active_pj_per_cycle"];

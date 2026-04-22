@@ -80,8 +80,31 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
   _cosim = std::make_unique<CoSimDriver>(_config);
   _pim_hold_queues.resize(_n_memories);
   _pim_bypass_queues.resize(_n_memories);
+  _pim_ssrc_bypass_queues.resize(_n_memories);
   if (_cosim->is_active()) {
     spdlog::info("[Simulator] PIM co-sim active; per-channel hold queues sized to {}", _n_memories);
+  }
+
+  // F1 — SSRC coordinator. Always constructed so the scheduler can safely
+  // hold a pointer; only active when ssrc_enable=true in the overlay.
+  {
+    AHASD::SSRCConfig sc;
+    sc.enable                = _config.ssrc_enable;
+    sc.confidence_threshold  = _config.ssrc_confidence_threshold;
+    sc.state_bytes_per_token = _config.ssrc_state_bytes_per_token;
+    sc.resident_limit_bytes  = _config.ssrc_resident_limit_bytes;
+    sc.bypass_ns             = _config.ssrc_bypass_ns;
+    _ssrc = std::make_unique<AHASD::SSRCCoordinator>(sc);
+    if (_cosim) _cosim->attach_ssrc(_ssrc.get());
+    if (sc.enable) {
+      spdlog::info("[SSRC] enabled thr={:.3f} bytes/token={} budget={} B bypass_ns={}",
+                   sc.confidence_threshold, sc.state_bytes_per_token,
+                   (unsigned long long)sc.resident_limit_bytes, sc.bypass_ns);
+      if (!(_cosim && _cosim->is_active())) {
+        spdlog::warn("[SSRC] enabled without PIM co-sim: bypass path is inert, "
+                     "decisions still tracked but no DRAM cycles are saved.");
+      }
+    }
   }
 
   // B2.3 — AHASD coordinator. Construction is independent of the scheduler;
@@ -239,15 +262,29 @@ void Simulator::cycle() {
         if (!_icnt->is_empty(_n_cores + mem_id) &&
             !_dram->is_full(mem_id, _icnt->top(_n_cores + mem_id))) {
           MemoryAccess* front = _icnt->top(_n_cores + mem_id);
+          // F1 — SSRC bypass: attention-class writes belonging to a
+          // currently-deferred draft round never hit DRAM; PIMBackend
+          // absorbs them into its on-chip staging buffer and we re-emit a
+          // completion via the bypass queue after ssrc_bypass_latency.
+          bool ssrc_bypassed = false;
+          if (_cosim && _cosim->is_active() && _ssrc && _ssrc->is_enabled()) {
+            ssrc_bypassed = _cosim->try_ssrc_bypass(mem_id, front, _core_cycles);
+          }
           // B2.2/issue-15 — AAU bypass: attention-class K/V reads on PIM
           // channels never hit DRAM; AAU serves them with a short bypass
           // latency and routes the response back through ICNT directly.
           bool bypassed = false;
-          if (_cosim && _cosim->is_active()) {
+          if (!ssrc_bypassed && _cosim && _cosim->is_active()) {
             bypassed = _cosim->try_aau_bypass(mem_id, front, _core_cycles);
           }
-          if (bypassed) {
-            // Build fake completion: response mode flips to read-done.
+          if (ssrc_bypassed) {
+            front->request = false;
+            _pim_ssrc_bypass_queues[mem_id].push(
+                {_core_cycles + _cosim->ssrc_bypass_latency_npu_cycles(), front});
+            _icnt->pop(_n_cores + mem_id);
+            _nr_to_mem++;
+            _tot_nr_to_mem++;
+          } else if (bypassed) {
             front->request = false;
             _pim_bypass_queues[mem_id].push(
                 {_core_cycles + _cosim->bypass_latency_npu_cycles(), front});
@@ -279,6 +316,19 @@ void Simulator::cycle() {
               !_icnt->is_full(_n_cores + mem_id, bfront.second)) {
             _icnt->push(_n_cores + mem_id, get_dest_node(bfront.second), bfront.second);
             _pim_bypass_queues[mem_id].pop();
+            _nr_from_mem++;
+            _tot_nr_from_mem++;
+          }
+        }
+        // F1 — drain SSRC bypass queue. Same plumbing as AAU's queue but
+        // uses the ssrc_bypass_ns tunable so §5.6 SSRC ablation knobs are
+        // independent of the AAU fusion latency.
+        if (_cosim && _cosim->is_active() && !_pim_ssrc_bypass_queues[mem_id].empty()) {
+          auto& sfront = _pim_ssrc_bypass_queues[mem_id].front();
+          if (sfront.first <= _core_cycles &&
+              !_icnt->is_full(_n_cores + mem_id, sfront.second)) {
+            _icnt->push(_n_cores + mem_id, get_dest_node(sfront.second), sfront.second);
+            _pim_ssrc_bypass_queues[mem_id].pop();
             _nr_from_mem++;
             _tot_nr_from_mem++;
           }
@@ -378,6 +428,11 @@ void Simulator::cycle() {
   if (_cosim) {
     _cosim->print_statistics(_core_cycles);
   }
+  // F1 — SSRC coordinator summary. Always printed (even when disabled) so
+  // log-parsers can confirm ssrc_enable=0 reproduces bit-identically.
+  if (_ssrc) {
+    spdlog::info("{}", _ssrc->summary());
+  }
   // B2.5 — synthetic acceptance model summary. Only present in speculative
   // language mode; silent otherwise so legacy runs don't gain noise.
   if (_lang_scheduler && _lang_scheduler->is_speculative()) {
@@ -459,6 +514,7 @@ void Simulator::register_language_model(json info, std::unique_ptr<LanguageModel
       if (spec != nullptr) {
         spec->attach_ahasd(_enable_ahasd ? _ahasd.get() : nullptr,
                            (_cosim && _cosim->is_active()) ? _cosim->pim() : nullptr);
+        spec->attach_ssrc(_ssrc.get());
       }
     }
     return;
@@ -504,6 +560,9 @@ bool Simulator::running() {
       if (!q.empty()) { running = true; break; }
     }
     for (const auto& q : _pim_bypass_queues) {
+      if (!q.empty()) { running = true; break; }
+    }
+    for (const auto& q : _pim_ssrc_bypass_queues) {
       if (!q.empty()) { running = true; break; }
     }
   }

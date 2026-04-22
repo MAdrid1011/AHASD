@@ -39,12 +39,18 @@ PIMBackend::PIMBackend(SimulationConfig config) : _config(config) {
   _aau_bypass_npu_cycles =
       static_cast<uint32_t>((static_cast<double>(_config.pim_aau_bypass_ns) * 1e-9) *
                             (static_cast<double>(_config.core_freq) * 1e6));
+  _ssrc_bypass_npu_cycles =
+      static_cast<uint32_t>((static_cast<double>(_config.ssrc_bypass_ns) * 1e-9) *
+                            (static_cast<double>(_config.core_freq) * 1e6));
+  if (_config.ssrc_enable && _ssrc_bypass_npu_cycles == 0) _ssrc_bypass_npu_cycles = 1;
 
   spdlog::info("[PIMBackend] active: pim_channels={}/{} pim_clock={} MHz npu/pim ratio={:.3f} "
-               "gtsu_switch={} ns ({} NPU cycles) aau_fusion={} ratio={:.2f}",
+               "gtsu_switch={} ns ({} NPU cycles) aau_fusion={} ratio={:.2f} "
+               "ssrc_enable={} ssrc_bypass_ns={} ({} NPU cycles)",
                _num_pim_channels, n_ch, _config.pim_clock_mhz, _npu_to_pim_ratio,
                _config.pim_gtsu_switch_ns, _gtsu_switch_npu_cycles,
-               _config.pim_enable_aau_fusion, _config.pim_aau_fusion_ratio);
+               _config.pim_enable_aau_fusion, _config.pim_aau_fusion_ratio,
+               _config.ssrc_enable, _config.ssrc_bypass_ns, _ssrc_bypass_npu_cycles);
 }
 
 void PIMBackend::parse_channel_mask(const std::string& mask) {
@@ -102,6 +108,45 @@ uint32_t PIMBackend::on_dram_push(uint32_t cid, MemoryAccess* req, uint64_t npu_
         hold, std::numeric_limits<uint32_t>::max()));
   }
   return 0;
+}
+
+bool PIMBackend::try_ssrc_bypass(uint32_t cid, MemoryAccess* req,
+                                 uint64_t /*npu_cycle*/) {
+  if (!_active) return false;
+  if (_ssrc == nullptr || !_ssrc->is_enabled()) return false;
+  if (req == nullptr) return false;
+  // F1 diag: count every tagged write reaching the bypass path so the
+  // §5.6 report can distinguish "SSRC saw a candidate" from "SSRC chose
+  // to defer".  Pre-gated on is_enabled() so ahasd_full paths stay
+  // bit-identical.
+  if (req->write && req->request_identity_tagged) {
+    _stats.ssrc_tagged_writes_total++;
+    if (is_pim_channel(cid)) _stats.ssrc_tagged_pim_writes_seen++;
+  }
+  if (!is_pim_channel(cid)) return false;
+  // SSRC defers speculative draft state (KV cache writes); reads still
+  // need to go to DRAM because subsequent rounds may read committed
+  // prefix state. Non-attention-class traffic is never deferred.
+  if (!req->write || !req->request_identity_tagged) return false;
+  if (_ssrc_bypass_npu_cycles == 0) return false;
+  if (req->request_id == INVALID_REQUEST_ID) {
+    _stats.ssrc_rejected_invalid_id++;
+    return false;
+  }
+  if (!_ssrc->is_active_request(req->request_id)) {
+    _stats.ssrc_rejected_not_active++;
+    return false;
+  }
+
+  // Route through SSRC bypass queue — request never hits DRAM.
+  _ssrc->note_bypassed_write(req->request_id, req->size);
+  _stats.total_pim_requests++;
+  _stats.total_pim_write_requests++;
+  _stats.total_pim_write_bytes += req->size;
+  _stats.total_attention_class_requests++;
+  _stats.total_ssrc_bypassed_requests++;
+  _stats.total_ssrc_bypassed_bytes += req->size;
+  return true;
 }
 
 bool PIMBackend::try_aau_bypass(uint32_t cid, MemoryAccess* req,
@@ -213,4 +258,12 @@ void PIMBackend::print_statistics(uint64_t final_npu_cycle) const {
   spdlog::info("[PIMBackend] GTSU switches: {} ; total stall cycles: {}",
                _stats.total_gtsu_switches, _stats.total_gtsu_stall_npu_cycles);
   spdlog::info("[PIMBackend] TVC hold cycles: {}", _stats.total_tvc_hold_npu_cycles);
+  spdlog::info("[PIMBackend] SSRC bypassed writes: {} ; bytes: {} ; bypass latency (NPU cycles/event): {}",
+               _stats.total_ssrc_bypassed_requests, _stats.total_ssrc_bypassed_bytes,
+               _ssrc_bypass_npu_cycles);
+  spdlog::info("[PIMBackend] SSRC diag: tagged_writes_total={} tagged_pim_writes_seen={} rejected_invalid_id={} rejected_not_active={}",
+               _stats.ssrc_tagged_writes_total,
+               _stats.ssrc_tagged_pim_writes_seen,
+               _stats.ssrc_rejected_invalid_id,
+               _stats.ssrc_rejected_not_active);
 }

@@ -23,6 +23,7 @@
 
 #include "../AHASDIntegration.h"
 #include "../PIMBackend.h"
+#include "../SSRC.h"
 
 #include <algorithm>
 
@@ -68,6 +69,12 @@ void SpecDecodeScheduler::attach_ahasd(AHASD::AHASDIntegration* ahasd,
                (_ahasd != nullptr) && _ahasd->config().enable_edc,
                (_ahasd != nullptr) && _ahasd->config().enable_tvc,
                (_pim != nullptr) && _pim->is_active());
+}
+
+void SpecDecodeScheduler::attach_ssrc(AHASD::SSRCCoordinator* ssrc) {
+  _ssrc = ssrc;
+  spdlog::info("[SpecDecode] SSRC attached: enabled={}",
+               (_ssrc != nullptr) && _ssrc->is_enabled());
 }
 
 float SpecDecodeScheduler::compute_entropy_hint(const LangRequest& req) const {
@@ -233,6 +240,18 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
       req.planned_draft_length = pick_draft_length(req);
       req.drafted_in_round = 0;
       req.spec_round += 1;
+      // F1 — ask SSRC whether this round should be deferred. SSRC reads
+      // the same entropy hint EDC just consumed, so the "low confidence ⇒
+      // defer" test is consistent with the "low confidence ⇒ short k"
+      // test. The decision is per-round; every DRAFT issued inside the
+      // round will be bound to this record via bind_draft_model().
+      if (_ssrc != nullptr && _ssrc->is_enabled()) {
+        const float entropy_hint = compute_entropy_hint(req);
+        if (_ssrc->should_defer_round(req.request_id, req.spec_round,
+                                      req.planned_draft_length, entropy_hint)) {
+          _ssrc_deferred_round[req.request_id] = req.spec_round;
+        }
+      }
       req.spec_phase = LangSpecPhase::DRAFTING;
       [[fallthrough]];
     }
@@ -245,6 +264,9 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
                           req.planned_draft_length, req.spec_round, _cycle};
       req.running = true;
       _requests_in_model[mid].push_back(req.request_id);
+      // F1 — no per-DRAFT binding needed: MemoryAccess.request_id inherits
+      // from LangRequest.request_id via LanguageModel::get_request_id, so
+      // PIMBackend can look the deferral up directly by that key.
       _model_queue.push(std::move(infer_model));
       return true;
     }
@@ -455,9 +477,22 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
                                       std::max<uint64_t>(1, verify_cycles),
                                       req.current_length);
       }
+      // F1 — retire any SSRC-deferred round for this request. Use
+      // meta.verify_round (captured at issue time) in case spec_round has
+      // already advanced for the next round.
+      if (_ssrc != nullptr && _ssrc->is_enabled()) {
+        auto dr_it = _ssrc_deferred_round.find(req.request_id);
+        if (dr_it != _ssrc_deferred_round.end() &&
+            dr_it->second == meta.verify_round) {
+          _ssrc->on_round_verified(req.request_id, meta.verify_round,
+                                   accepted, k);
+          _ssrc_deferred_round.erase(dr_it);
+        }
+      }
       if (req.spec_phase == LangSpecPhase::DONE) {
         _last_rank_mode.erase(req.request_id);
         _pre_verified_in_round.erase(req.request_id);
+        _ssrc_deferred_round.erase(req.request_id);
         _active_requests.erase(req.request_id);
       }
       break;

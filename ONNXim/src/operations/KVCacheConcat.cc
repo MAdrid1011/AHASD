@@ -68,11 +68,17 @@ void KVCacheConcat::initialize_tiles(MappingTable& mapping_table) {
     _model->get_tensor(value_tensor_id)->define_tensor(value_cache->get_address(), value_dims);
   }
   calculate_loops();
+  // F1 — when SSRC is enabled we must materialize the KV cache writes as
+  // real memory traffic so that try_ssrc_bypass can observe (and defer)
+  // them.  Pre-F1 overlays (AAU, GTSU, TVC, ahasd_full) rely on the
+  // accounting-only skip path and must remain bit-identical; we therefore
+  // gate the materialization on `ssrc_enable`.
+  const bool skip_tile = !_config.ssrc_enable;
   for(int outter = 0; outter < _outter_loops; outter++) {
     _tiles.push_back(std::make_unique<Tile>(Tile{.status = Tile::Status::INITIALIZED,
                       .optype = "KVCacheConcat",
                       .layer_id = _id,
-                      .skip = true}));
+                      .skip = skip_tile}));
     initialize_instructions(_tiles.back().get(), outter);
   }
 }

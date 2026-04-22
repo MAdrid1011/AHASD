@@ -38,6 +38,18 @@ class CoSimDriver {
     return _pim ? _pim->bypass_latency_npu_cycles() : 0;
   }
 
+  // F1 — SSRC bypass path. Simulator calls `try_ssrc_bypass` *before*
+  // `try_aau_bypass` and `on_dram_push`; when it returns true the request
+  // is queued in the simulator-side bypass queue for
+  // `ssrc_bypass_latency_npu_cycles()` NPU cycles and never touches DRAM.
+  bool try_ssrc_bypass(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
+  uint64_t ssrc_bypass_latency_npu_cycles() const {
+    return _pim ? _pim->ssrc_bypass_latency_npu_cycles() : 0;
+  }
+  void attach_ssrc(AHASD::SSRCCoordinator* ssrc) {
+    if (_pim) _pim->attach_ssrc(ssrc);
+  }
+
   // End-of-simulation summary printer.
   void print_statistics(uint64_t final_npu_cycle) const;
 

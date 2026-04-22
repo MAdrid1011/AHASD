@@ -70,9 +70,8 @@ struct SimulationConfig {
   uint32_t full_precision = 4;
   std::string layout;
   
-  /* AHASD config.
-   * SSRC flags were removed in B2.3 with the sidecar; SSRC real cycle
-   * coupling will come back as part of F1 and own its own config block.
+  /* AHASD config. SSRC block (F1) is defined below so the legacy
+   * enable_ahasd / enable_edc / ... flags keep their original layout.
    */
   bool enable_ahasd = false;
   bool enable_edc = true;
@@ -116,6 +115,29 @@ struct SimulationConfig {
    *   one-row-activation plus AAU reduction pipeline.
    */
   uint32_t pim_aau_bypass_ns = 18;
+
+  /* F1 — SSRC (Speculative State Rollback Control). Defaults keep SSRC
+   * OFF so every existing overlay and every pre-F1 baseline reproduces
+   * bit-identically; ahasd_ssrc.json is the opt-in overlay.
+   *
+   *   ssrc_enable:                  master flag.
+   *   ssrc_confidence_threshold:    entropy H above which the current
+   *                                 draft round is tagged low-confidence
+   *                                 and therefore eligible for deferral.
+   *   ssrc_state_bytes_per_token:   per-token KV state bytes for
+   *                                 budget/accounting (default 128 B,
+   *                                 LLaMA2-7B FP16 class).
+   *   ssrc_resident_limit_bytes:    hard cap on resident deferred bytes,
+   *                                 beyond which SSRC refuses to defer.
+   *   ssrc_bypass_ns:               NPU-cycle-equivalent latency paid per
+   *                                 bypassed attention-class write when
+   *                                 SSRC is active (default 10 ns).
+   */
+  bool     ssrc_enable                 = false;
+  float    ssrc_confidence_threshold   = 6.0f;
+  uint32_t ssrc_state_bytes_per_token  = 128;
+  uint64_t ssrc_resident_limit_bytes   = 4ULL * 1024ULL * 1024ULL;
+  uint32_t ssrc_bypass_ns              = 10;
 
   /* B2.4 — energy-model coefficients (LUT, per-pJ). Defaults are documented
    * in EnergyModel.h. All keys are optional in onnxim_config.json; absent

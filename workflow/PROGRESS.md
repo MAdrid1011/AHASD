@@ -18,10 +18,10 @@
 | Phase A | AHASDFix 纯文字修改（W1/W7/W8/W10） | ⏸ 推迟到 Phase G |
 | Phase B | 仿真器基线诊断 | ✅ 已完成（结论：需从头重建） |
 | **Phase B2** | **仿真器底座重建（多模型调度器 / 协同仿真 / 能量 / 接受模型 / 端到端冒烟）** | ✅ 已完成 |
-| Phase C | 三条基线实现（NPU-only / SpecPIM / GPU-only） | 🔲 未开始 |
+| Phase C | 三条基线实现（NPU-only / SpecPIM / GPU-only） | ✅ 已完成（C1/C2/C3） |
 | Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1-D4 infra + pilot 就绪，prod 矩阵待跑 |
 | Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🚧 E1 infra + E2 合成模型完成，prod sweep 待跑 |
-| Phase F | SSRC 真实集成 + Challenge 3 | 🔲 未开始 |
+| Phase F | SSRC 真实集成 + Challenge 3 | 🚧 F1 完成（SSRC 真周期耦合 + 物化 KV write + 成功冒烟） |
 | Phase G | AHASPro.md 论文文字全面更新 | 🔲 未开始 |
 
 ---
@@ -541,27 +541,51 @@
 
 ## Phase F：SSRC 真实集成
 
-### F1 — 最小化侵入集成方案（原 D1 SSRC plan）
-- **原则**：在 PIMSimulator 请求入口加 SSRC gate，deferred 的 batch 不提交 KV cache write 请求，直接减少 PIM 访存周期
-- **验收标准**：`ahasd_cycle_coupling_active=1` 且 SSRC 配置 vs 无 SSRC 的 `total_cycles` 有可测量差异
-- **状态**：🔲 未开始
+### F1 — SSRC 真实周期耦合（杀掉 sidecar，deferred 真的跳过 KV write）
+- **原则**：在 PIMBackend 入口加 SSRC gate，deferred 的 draft round 不提交 KV cache write 请求，绕过 DRAM，通过专用 bypass queue 以 `ssrc_bypass_ns` 短延迟直接回应 ICNT
+- **验收标准**：`ssrc_enable=true` 的配置与同模型 `ahasd_full` 有可测量的周期/字节差异；`SSRC bypassed writes > 0` 且仅在 deferred round 期间被计入
+- **状态**：✅ 已完成（2026-04-22）
+
+**完成要点**：
+1. `SSRC.h`（头文件 only）: `AHASD::SSRCCoordinator` 管理 deferral decision + resident byte budget + 统计；键为 `lang_request_id`
+2. `SimulationConfig` + `Common.cc` 新增 SSRC 配置块（`ssrc_enable` / `ssrc_confidence_threshold` / `ssrc_state_bytes_per_token` / `ssrc_resident_limit_bytes` / `ssrc_bypass_ns`）
+3. `PIMBackend::try_ssrc_bypass` 识别 attention-class tagged write 并匹配 SSRC-active request，bypass 成功则回调 `SSRCCoordinator::note_bypassed_write`
+4. `Simulator.cc` ICNT→memory 路径在 AAU bypass 前优先尝试 SSRC bypass；新增 `_pim_ssrc_bypass_queues` 专用短延迟响应队列；drain/running/summary 全部接入
+5. `SpecDecodeScheduler` 在 `DRAFT_ROUND_START` 调 `should_defer_round`，在 `VERIFY` 调 `on_round_verified`（按实际 accepted length 分流 commit/discard/partial），`DONE` 阶段做 cleanup
+6. `KVCacheConcat.cc`: 将 `skip=true` 改为 `skip = !_config.ssrc_enable`——只有 SSRC 打开时 KV cache write 才物化为真实 MOVOUT，保证其它 baseline (`ahasd_full` / AAU / GTSU / TVC) bit-identical
+7. `configs/baselines/ahasd_ssrc.json` overlay：继承 `_base_systolic_c4_128x128_hbm2.json` + AHASD 全家桶 + `ssrc_enable=true thr=5.0 budget=4 MB bypass_ns=10`
+
+**冒烟验证**（opt-125m × opt-125m-t，parametric acceptance，seed=2025，workflow/runs/f1/ahasd_ssrc_final）：
+- `SSRC decisions=21 deferred=7 refused=0 commit=2 discard=5 partial=0`
+- `bypass_writes=1344 bytes=43008` （43 KB KV cache write 真的没打 DRAM）
+- `tagged_writes_total=13824 tagged_pim_writes_seen=6912`（stride=2，一半落 PIM channel）
+- `rejected_not_active=5568`（非 deferred round 的 tagged write 正常走 DRAM，未被干扰）
+- `saved=1536 B replayed=256 B peak=896 B`（resident budget 工作正常）
+- `final_npu_cycle=5,165,773` vs `ahasd_full` regress `5,149,538`（+0.47% 真实开销，反映物化的 KV write 增加的 PIM 带宽 + bypass latency 的净差）
+- `Total Energy 149.53 mJ` vs `ahasd_full 149.82 mJ`（−0.29 mJ，SSRC 抑制了 ~1.3 KB PIM write energy）
+
+**关键设计决策**：
+- deferral key 选择 `lang_request_id`（即 `MemoryAccess.request_id`）：PIMBackend 的 request 粒度与 scheduler 一致，无需额外映射表；multi-batch 的 request id 独立不会撞车
+- `should_defer_round` 同时检查 resident budget 和 entropy hint（`entropy_hint > confidence_threshold` 才 defer），budget 满返回 false 并计入 `stats.refused`
+- `on_round_verified` 使用 accepted/total 三分：全接（commit 全部保留）、全拒（discard 全部弃掉并 replay 字节）、部分（partial：接受前缀保留、剩余弃）
+- KV cache write 物化是 gate 在 `ssrc_enable` 上的——不是一刀切，保证 §5.2/5.3 既有数据仍有效；未来若希望在 `ahasd_full` 也物化（即放弃 DAC 版 skipped accounting）需单独开 G 阶段论文叙述
 
 ---
 
-## Phase E：Challenge 3 + SSRC 完整实验
-
-### E1 — Challenge 3 量化图数据
+### F2 — Challenge 3 量化实验（LLR vs 物化字节/拒绝比例）
 - **目标**：LLR（0-7）vs 物化状态字节数（MB）+ 拒绝比例（%）双 Y 轴折线图
+- **依赖**：F1 ✅ ；EDC LLR sweep 基础设施（E1）
 - **状态**：🔲 未开始
 
-### E2 — SSRC 完整评估矩阵
-- **配置**：3 模型对 × 4 算法 × threshold sweep {0.6, 0.7, 0.8, 0.9}
-- **指标**：吞吐量、能效、物化状态字节、峰值驻留字节
+### F3 — SSRC 完整评估矩阵（3×4×threshold sweep）
+- **配置**：3 模型对 × 4 算法 × threshold sweep `{4.0, 5.0, 6.0, 7.0}`（配合当前 parametric acceptance 模式的 entropy hint 分布）
+- **指标**：吞吐量、能效、`bypass_writes` / `replay bytes` / `peak resident bytes`
+- **依赖**：F1 ✅
 - **状态**：🔲 未开始
 
 ---
 
-## Phase F：AHASPro.md 全面更新
+## Phase G：AHASPro.md 全面更新
 
 - AHASDFix 所有 11 条 weakness 对应的论文文字修改
 - AHASDExtend 结构重组（ADPC 合并、SSRC 新增、节编号更新）
