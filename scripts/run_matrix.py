@@ -42,6 +42,15 @@ from typing import Dict, List
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 
+# D3 — emit W3 utilization breakdown per cell as a free side-effect
+# of running the matrix. parse_utilization is pure log-parsing and
+# cheap to call.
+try:
+    from parse_utilization import parse_log as _parse_util_log  # type: ignore
+except ImportError:  # pragma: no cover — script-relative import
+    sys.path.insert(0, str(HERE))
+    from parse_utilization import parse_log as _parse_util_log  # type: ignore
+
 
 METRIC_COLUMNS = [
     "sim_finished_cycles",
@@ -96,6 +105,17 @@ def run_cell(args, model_pair: str, algorithm: str) -> Dict:
     else:
         m = {"__error": f"run_baseline.py returned rc={rc} without metrics.json"}
     m["__cell_returncode"] = rc
+
+    # D3 — emit W3 utilization breakdown from the cell's log.
+    log_path = out / "log.txt"
+    util_path = out / "utilization.json"
+    if log_path.exists() and (args.force or not util_path.exists()):
+        try:
+            util = _parse_util_log(log_path)
+            util_path.write_text(json.dumps(util, indent=2))
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[matrix] WARNING: utilization parse failed for "
+                  f"{model_pair} x {algorithm}: {exc}", file=sys.stderr)
     return m
 
 
@@ -147,6 +167,30 @@ def main() -> int:
         for r in rows:
             w.writerow(r)
     json_path.write_text(json.dumps(rows, indent=2))
+
+    # D3 — consolidated utilization matrix for W3 figure data.
+    util_rows: List[Dict] = []
+    for pair in pairs:
+        for algo in algos:
+            cell = cell_dir(args.output_dir, pair, algo)
+            up = cell / "utilization.json"
+            if not up.exists():
+                continue
+            u = json.loads(up.read_text())
+            util_rows.append({
+                "model_pair": pair, "algorithm": algo,
+                "total_npu_cycles": u.get("total_npu_cycles"),
+                "total_pim_cycles": u.get("total_pim_cycles"),
+                **u.get("npu_util_pct", {}),
+                "hbm_bw_weighted_avg_pct": u.get("hbm_bw_weighted_avg_pct"),
+                "pim_gtsu_stall_cycles": u.get("pim", {}).get("gtsu_stall_cycles"),
+                "pim_tvc_hold_cycles": u.get("pim", {}).get("tvc_hold_cycles"),
+                "pim_aau_fused_events": u.get("pim", {}).get("aau_fused_events"),
+                "pim_aau_fusion_saved_bytes": u.get("pim", {}).get("aau_fusion_saved_bytes"),
+            })
+    if util_rows:
+        (args.output_dir / "utilization_matrix.json").write_text(
+            json.dumps(util_rows, indent=2))
 
     print()
     print(f"[matrix] {len(rows)} cells written to {csv_path}")
