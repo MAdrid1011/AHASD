@@ -79,6 +79,10 @@ class Simulator {
   // handed to the DRAM backend immediately. Entries are (release_npu_cycle,
   // MemoryAccess*).
   std::vector<std::queue<std::pair<uint64_t, MemoryAccess*>>> _pim_hold_queues;
+  // AAU bypass queue: (ready_cycle, req). Requests placed here by AAU
+  // never hit DRAM; Simulator routes them directly into the ICNT response
+  // path once ready_cycle <= _core_cycles.
+  std::vector<std::queue<std::pair<uint64_t, MemoryAccess*>>> _pim_bypass_queues;
 
   // Icnt stat
   uint64_t _nr_from_core=0;

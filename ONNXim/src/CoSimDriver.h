@@ -29,6 +29,14 @@ class CoSimDriver {
   uint32_t on_dram_push(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
   void on_dram_pop(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
   void cycle(uint64_t npu_cycle);
+  // AAU bypass: if request qualifies for AAU fusion, this consumes it
+  // (incrementing AAU stats) and Simulator routes it through its bypass
+  // queue with PIMBackend::bypass_latency_npu_cycles() latency instead of
+  // touching DRAM.
+  bool try_aau_bypass(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
+  uint64_t bypass_latency_npu_cycles() const {
+    return _pim ? _pim->bypass_latency_npu_cycles() : 0;
+  }
 
   // End-of-simulation summary printer.
   void print_statistics(uint64_t final_npu_cycle) const;

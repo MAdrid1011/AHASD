@@ -100,6 +100,13 @@ struct SimulationConfig {
   bool pim_enable_aau_fusion = true;
   float pim_aau_fusion_ratio = 0.75f;
   uint32_t pim_gtsu_switch_ns = 55;
+  /* pim_aau_bypass_ns:
+   *   AAU's internal service time for a fused K/V request.  Set to 0 to
+   *   disable bypass (fused requests still return their bytes via DRAM,
+   *   AAU stays energy-only).  Default 18 ns models HBM2 PIM-rank tCCDL-like
+   *   one-row-activation plus AAU reduction pipeline.
+   */
+  uint32_t pim_aau_bypass_ns = 18;
 
   /* B2.4 — energy-model coefficients (LUT, per-pJ). Defaults are documented
    * in EnergyModel.h. All keys are optional in onnxim_config.json; absent
