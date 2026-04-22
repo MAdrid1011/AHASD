@@ -1,0 +1,13 @@
+{
+  "_doc": "W4 GPU-only proxy baseline — emulates a GPU-class accelerator on ONNXim's NPU substrate. ONNXim's fly_c4_m32 icnt topology is sized for 4 cores + 32 memory ports, so the cleanest proxy that stays within committed topology files is to keep the 4-core systolic substrate identical and double the memory system instead: dram_channels 16 -> 32 and dram_freq 800 MHz -> 1600 MHz (HBM3-class). No PIM, no AHASD (a GPU does not have either). Used as the 4th column of D2's SOTA matrix alongside npu_only / specpim / ahasd_full.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "enable_ahasd": false,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "max_draft_length": 4,
+  "pim_enable": false,
+  "pim_enable_aau_fusion": false,
+  "dram_channels": 32,
+  "dram_freq": 1600
+}
