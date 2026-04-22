@@ -11,7 +11,10 @@
 
 namespace AHASD {
 
-constexpr uint32_t CYCLE_TABLE_SIZE = 4;  // Keep last 4 samples for moving average
+// E1 — sensitivity sweep default. Historical value is 4; parametric
+// overrides flow from SimulationConfig via AHASDIntegration.
+constexpr uint32_t DEFAULT_CYCLE_TABLE_SIZE = 4;
+constexpr uint32_t CYCLE_TABLE_SIZE = DEFAULT_CYCLE_TABLE_SIZE;  // back-compat
 
 struct CycleRecord {
     uint64_t cycles;
@@ -45,40 +48,47 @@ private:
     
     // Frequency ratio (PIM freq / NPU freq) for cycle conversion
     float freq_ratio_;
-    
+
+    // E1 — runtime-configurable sliding window depth (NVCT/PDCT/PVCT share).
+    uint32_t cycle_table_size_;
+
     // Statistics
     uint64_t total_preverifications_;
     uint64_t successful_preverifications_;
     uint64_t prevented_npu_idles_;
     uint64_t total_decisions_;
-    
+
     // Helper: Calculate moving average of cycle ratios
     float calculate_avg_ratio(const std::deque<CycleRecord>& table) const {
         if (table.empty()) return 0.0f;
-        
+
         float sum = 0.0f;
         for (const auto& record : table) {
             sum += record.get_ratio();
         }
         return sum / table.size();
     }
-    
+
     // Helper: Add record to cycle table (maintain size limit)
-    void add_to_table(std::deque<CycleRecord>& table, 
+    void add_to_table(std::deque<CycleRecord>& table,
                      uint64_t cycles, uint32_t length) {
-        if (table.size() >= CYCLE_TABLE_SIZE) {
+        while (table.size() >= cycle_table_size_) {
             table.pop_front();
         }
         table.push_back(CycleRecord(cycles, length));
     }
 
 public:
-    TVC(float pim_freq_mhz = 800.0f, float npu_freq_mhz = 1000.0f) 
-        : ncr_(0), npu_task_start_(0), 
+    TVC(float pim_freq_mhz = 800.0f, float npu_freq_mhz = 1000.0f,
+        uint32_t cycle_table_size = DEFAULT_CYCLE_TABLE_SIZE)
+        : ncr_(0), npu_task_start_(0),
+          cycle_table_size_(std::max<uint32_t>(1u, cycle_table_size)),
           total_preverifications_(0), successful_preverifications_(0),
           prevented_npu_idles_(0), total_decisions_(0) {
         freq_ratio_ = pim_freq_mhz / npu_freq_mhz;
     }
+
+    uint32_t get_cycle_table_size() const { return cycle_table_size_; }
     
     // Record NPU verification completion
     void record_npu_verification(uint64_t cycles, uint32_t kv_cache_length) {

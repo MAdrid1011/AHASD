@@ -155,6 +155,14 @@ def main() -> int:
     ap.add_argument("--onnxim", type=Path, default=REPO / "ONNXim")
     ap.add_argument("--output-dir", type=Path, required=True)
     ap.add_argument("--timeout-s", type=int, default=600)
+    # E1 — allow sensitivity sweeps to override individual SimulationConfig
+    # keys without duplicating the whole overlay. Repeatable, last wins.
+    # Values are parsed as JSON so ints/floats/bools/lists are preserved.
+    ap.add_argument("--config-override", action="append", default=[],
+                    metavar="KEY=JSON_VALUE",
+                    help="Override a single SimulationConfig key after the "
+                         "overlay merge, e.g. --config-override edc_h_max=8.0. "
+                         "Repeatable; JSON-parsed.")
     args = ap.parse_args()
 
     out_dir = args.output_dir.resolve()
@@ -163,6 +171,15 @@ def main() -> int:
     cfg = resolve_overlay(args.baseline)
     cfg["max_draft_length"] = args.max_draft_length
     cfg["accept_rng_seed"] = args.accept_seed
+    for spec in args.config_override:
+        if "=" not in spec:
+            raise SystemExit(f"[baseline] --config-override must be KEY=JSON_VALUE, got {spec!r}")
+        key, _, raw = spec.partition("=")
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            value = raw
+        cfg[key] = value
     if args.acceptance_csv:
         cfg["accept_mode"] = "trace_replay"
         cfg["accept_trace_path"] = str(args.acceptance_csv.resolve())

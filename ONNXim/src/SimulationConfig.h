@@ -79,6 +79,15 @@ struct SimulationConfig {
   bool enable_tvc = true;
   bool enable_aau = true;
   uint32_t max_draft_length = 16;
+  /* E1 — W2 sensitivity-sweep hyperparameters. Defaults reproduce the
+   * DAC design point (LEHT=8, LLR=3b, H_max=10.0, TVC window=4); any
+   * baseline overlay that omits these keys instantiates EDC/TVC
+   * bit-identically to the pre-E1 behaviour.
+   */
+  float    edc_h_max             = 10.0f;
+  uint32_t edc_leht_size         = 8;
+  uint32_t edc_llr_bits          = 3;
+  uint32_t tvc_cycle_table_size  = 4;
 
   /* B2.2 — PIM co-simulation (NPU + PIM heterogeneous DRAM).
    *   pim_enable:          master flag; when false Simulator behaves as legacy.
