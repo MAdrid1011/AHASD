@@ -19,7 +19,7 @@
 | Phase B | 仿真器基线诊断 | ✅ 已完成（结论：需从头重建） |
 | **Phase B2** | **仿真器底座重建（多模型调度器 / 协同仿真 / 能量 / 接受模型 / 端到端冒烟）** | ✅ 已完成 |
 | Phase C | 三条基线实现（NPU-only / SpecPIM / GPU-only） | 🔲 未开始 |
-| Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🔲 未开始 |
+| Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1 infra 就绪，prod 矩阵待跑 |
 | Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🔲 未开始 |
 | Phase F | SSRC 真实集成 + Challenge 3 | 🔲 未开始 |
 | Phase G | AHASPro.md 论文文字全面更新 | 🔲 未开始 |
@@ -400,9 +400,49 @@
 
 ---
 
-## Phase D：SSRC 真实集成
+## Phase D：DAC 实验数据产出（原 Phase D Plan）
 
-### D1 — 最小化侵入集成方案
+### D1 — Section 5.2 消融矩阵 infra + 冒烟
+- **矩阵定义**：3 模型对（OPT-1.3B×6.7B / LLaMA2-7B×13B / PaLM-8B×30B） × 4 progressive 算法点（NPU+PIM / +AAU / +AAU+EDC / +AAU+EDC+TVC = ahasd_full） = 12 cells
+- **infra 就绪（2026-04-21）**：
+  - ✅ 三条新 overlay：`configs/baselines/{ahasd_none, ahasd_aau, ahasd_aau_edc}.json`（所有都 `enable_ahasd=true` 保证 GTSU 在位，符合论文"任务级异步 NPU+PIM"定义）
+  - ✅ 矩阵驱动 `scripts/run_matrix.py`：`--model-pairs a:b,c:d` × `--algorithms x,y,z` 笛卡尔积；按 cell 复用 `run_baseline.py`；resume-able（`metrics.json` 已在就跳过，`--force` 覆盖）；产出 `matrix.{csv,json}`
+- **D1 pilot（opt-125m × 4 算法，smoke_p4_g8_2req, max_k=4, 参数化）**：
+
+  | algo | cycles | energy_mJ | gtsu | aau_fused | accept | vs_none |
+  |------|--------|-----------|------|-----------|--------|---------|
+  | ahasd_none | 5,156,573 | 153.50 | 216 | 0 | 0.2353 | 1.000× |
+  | ahasd_aau | 5,155,046 | 149.83 | 216 | 45,792 | 0.2353 | 1.000× |
+  | ahasd_aau_edc | 5,145,056 | 149.81 | 216 | 45,792 | 0.2353 | 1.002× |
+  | ahasd_full | 5,141,793 | 149.81 | 216 | 45,792 | 0.2353 | 1.003× |
+
+  - ✅ progressive ablation **单调改善**（cycles 每加一层都降）
+  - ✅ AAU 引入后 energy 降 2.4%（−3.67 mJ），cycle 只降 0.03% —— 能量比 cycle 更敏感
+  - ⚠️ accept_ratio 四条轴完全一致（0.2353）—— 说明这个 workload/seed 下 EDC 还没差异化 draft length；D1 prod 需要更大 workload + 更复杂 acceptance 参数才能让 EDC 的 k-selection 显效
+- **prod 矩阵状态**：
+  - **不在本期会话里跑**。opt-1.3b×6.7b 单 cell 估计 30-60 min，12 cells = 6-12 h 墙钟。已把 infra 入库，随时可以 `python3 scripts/run_matrix.py --model-pairs opt-1.3b:opt-6.7b,llama2-7b:llama2-13b,palm-8b:palm-30b --algorithms ahasd_none,ahasd_aau,ahasd_aau_edc,ahasd_full ...` 一把起
+  - 需要先创 `workloads/d1_prod_p64_g128_8req.csv`（或类似"真 benchmark 体量"workload）；pilot workload 太小不足以暴露 EDC/TVC 的差异
+- **状态**：✅ infra 完成；🔲 prod 矩阵待用户决策是否本地或远程长跑
+- **产物**：
+  - `configs/baselines/{ahasd_none,ahasd_aau,ahasd_aau_edc}.json`
+  - `scripts/run_matrix.py`
+  - `workflow/runs/d1_pilot_opt125m/{matrix.csv, matrix.json, <pair>__<algo>/*}`
+
+### D2 — Section 5.3 SOTA 对比
+- **输入**：C3 的四列 overlay（npu_only / gpu_only / specpim / ahasd_full） × 3 模型对
+- **状态**：🔲 等 D1 prod 矩阵跑完后一起跑（可共用 `run_matrix.py`）
+
+### D3 — W3 NPU/PIM 利用率分解图
+- **状态**：🔲 未开始
+
+### D4 — W9 overlap 带宽利用率图
+- **状态**：🔲 未开始
+
+---
+
+## Phase F：SSRC 真实集成
+
+### F1 — 最小化侵入集成方案（原 D1 SSRC plan）
 - **原则**：在 PIMSimulator 请求入口加 SSRC gate，deferred 的 batch 不提交 KV cache write 请求，直接减少 PIM 访存周期
 - **验收标准**：`ahasd_cycle_coupling_active=1` 且 SSRC 配置 vs 无 SSRC 的 `total_cycles` 有可测量差异
 - **状态**：🔲 未开始
@@ -450,3 +490,4 @@
 | 2026-04-21 | C1.5 完成（issue #15）：`Attention.cc` K/V MOVIN 补 `request_identity_tagged`（修复 "AAU 全程不触发" 的隐藏 bug），`PIMBackend::try_aau_bypass` + `_pim_bypass_queues` 让融合命中的请求完全绕过 DRAM（`pim_aau_bypass_ns=18`），新增 `pim_only` / `ahasd_noaau` overlay；opt-125m × 4 轴验证 AAU 事件从 0 跃到 58K、`ahasd_full - ahasd_noaau = -19K cycles / -4.7 mJ`；opt-1.3b probe 事件 10× 放大（45K→538K），但 p16/g32 规模仍不足以显 speedup — speedup 验收下沉到 D1 大 workload |
 | 2026-04-21 | C2 完成（issue #17）：`SpecDecodeScheduler::request_rank_switch` 加 `if (_ahasd == nullptr) return;` 门控，把 GTSU 定义为 AHASD-only 机制（pim_only 不再付 GTSU 周期，与 SpecPIM 论文静态通道分配语义一致）；新 overlay `configs/baselines/specpim.json` 作为 W4 SOTA 对比参考；冒烟 4 轴确认 pim_only/specpim GTSU switches 从 216 降到 0，ahasd_full 仍保留 216 次（回归守门） |
 | 2026-04-21 | C3 完成（issue #19）：overlay-only 的 GPU-only proxy —— 放大 DRAM 子系统（`dram_channels` 16→32、`dram_freq` 800→1600，HBM3-class），不动核数/拓扑；第 4 列 SOTA 入位。冒烟 `gpu_only` 对 `npu_only` 1.926×，对 `specpim` 1.926×；`ahasd_full` 对 `specpim` 仅 1.001× —— 论文 1.8-2× speedup claim 确认只能在 D1/D2 大 workload 里验收，此处作为规模依据记录 |
+| 2026-04-21 | D1 infra 完成（issue #21）：新增 `ahasd_none/ahasd_aau/ahasd_aau_edc` progressive overlays + `scripts/run_matrix.py` 笛卡尔积 + resume 驱动；opt-125m pilot 四轴 cycles 单调改善 5.157M → 5.142M，energy 153.50 → 149.81 mJ；prod 12-cell 大矩阵（opt-1.3b×6.7b + llama2 + palm，估 6-12 h 墙钟）入库待跑 |
