@@ -42,14 +42,16 @@ from typing import Dict, List
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 
-# D3 — emit W3 utilization breakdown per cell as a free side-effect
-# of running the matrix. parse_utilization is pure log-parsing and
-# cheap to call.
+# D3/D4 — emit W3 utilization + W9 overlap breakdowns per cell as a
+# free side-effect of running the matrix. Both parsers are pure log
+# parsing and cheap to call.
 try:
     from parse_utilization import parse_log as _parse_util_log  # type: ignore
+    from parse_overlap import parse_log as _parse_overlap_log  # type: ignore
 except ImportError:  # pragma: no cover — script-relative import
     sys.path.insert(0, str(HERE))
     from parse_utilization import parse_log as _parse_util_log  # type: ignore
+    from parse_overlap import parse_log as _parse_overlap_log  # type: ignore
 
 
 METRIC_COLUMNS = [
@@ -115,6 +117,16 @@ def run_cell(args, model_pair: str, algorithm: str) -> Dict:
             util_path.write_text(json.dumps(util, indent=2))
         except Exception as exc:  # pragma: no cover - defensive
             print(f"[matrix] WARNING: utilization parse failed for "
+                  f"{model_pair} x {algorithm}: {exc}", file=sys.stderr)
+
+    # D4 — emit W9 overlap-interval timeline from the cell's log.
+    overlap_path = out / "overlap_timeline.json"
+    if log_path.exists() and (args.force or not overlap_path.exists()):
+        try:
+            overlap = _parse_overlap_log(log_path)
+            overlap_path.write_text(json.dumps(overlap, indent=2))
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"[matrix] WARNING: overlap parse failed for "
                   f"{model_pair} x {algorithm}: {exc}", file=sys.stderr)
     return m
 
@@ -191,6 +203,35 @@ def main() -> int:
     if util_rows:
         (args.output_dir / "utilization_matrix.json").write_text(
             json.dumps(util_rows, indent=2))
+
+    # D4 — consolidated overlap summary matrix for W9 figure data.
+    # Keep the payload light: only the summary buckets, not the full
+    # per-window timeline (those already live alongside each cell).
+    overlap_rows: List[Dict] = []
+    for pair in pairs:
+        for algo in algos:
+            cell = cell_dir(args.output_dir, pair, algo)
+            op = cell / "overlap_timeline.json"
+            if not op.exists():
+                continue
+            o = json.loads(op.read_text())
+            s = o.get("overlap_summary", {})
+            overlap_rows.append({
+                "model_pair": pair, "algorithm": algo,
+                "window_count": o.get("window_count"),
+                "core_print_interval_est": o.get("core_print_interval_est"),
+                "classified_windows": s.get("classified_windows"),
+                "compute_only_pct": s.get("compute_only_pct"),
+                "memory_only_pct": s.get("memory_only_pct"),
+                "overlap_pct": s.get("overlap_pct"),
+                "idle_pct": s.get("idle_pct"),
+                "total_hbm_reads": s.get("total_hbm_reads"),
+                "total_hbm_writes": s.get("total_hbm_writes"),
+                "peak_hbm_bw_pct": s.get("peak_hbm_bw_pct"),
+            })
+    if overlap_rows:
+        (args.output_dir / "overlap_summary_matrix.json").write_text(
+            json.dumps(overlap_rows, indent=2))
 
     print()
     print(f"[matrix] {len(rows)} cells written to {csv_path}")
