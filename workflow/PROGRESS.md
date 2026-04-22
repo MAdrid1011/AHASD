@@ -428,9 +428,33 @@
   - `scripts/run_matrix.py`
   - `workflow/runs/d1_pilot_opt125m/{matrix.csv, matrix.json, <pair>__<algo>/*}`
 
-### D2 — Section 5.3 SOTA 对比
-- **输入**：C3 的四列 overlay（npu_only / gpu_only / specpim / ahasd_full） × 3 模型对
-- **状态**：🔲 等 D1 prod 矩阵跑完后一起跑（可共用 `run_matrix.py`）
+### D2 — Section 5.3 SOTA 对比（4 列 × 3 模型对）
+- **infra 情况**：四列 overlay（npu_only / specpim / gpu_only / ahasd_full）在 C1-C3 已全部入库；矩阵驱动 `run_matrix.py` 在 D1 已入库。**D2 infra 零新增**。
+- **D2 pilot（2026-04-21，opt-125m × 4 算法，smoke_p4_g8_2req, max_k=4, 参数化）**：
+
+  | algorithm | cycles | energy_mJ | gtsu | aau | vs_npu | vs_specpim |
+  |-----------|--------|-----------|------|-----|--------|------------|
+  | npu_only | 5,150,438 | 128.89 | 0 | 0 | 1.000× | 0.999× |
+  | specpim | 5,147,841 | 149.78 | 0 | 45,792 | 1.001× | 1.000× |
+  | gpu_only | 2,673,685 | 124.98 | 0 | 0 | **1.926×** | **1.925×** |
+  | ahasd_full | 5,141,793 | 149.81 | 216 | 45,792 | 1.002× | 1.001× |
+
+  - 与 C3 中同一配置的独立跑结果一致（`run_matrix.py` + `run_baseline.py` 结果可复现）
+  - AHASD 对 SpecPIM speedup = **1.001×**，和 C3 一致 —— 论文 1.5-2× 的 claim 依然只能在 prod 12-cell 大矩阵里验收
+  - GPU-only 2× 领先持续 —— opt-125m scale 下 attention 更偏访存 bound 而非计算 bound
+- **prod 矩阵命令（infra 就绪，待 workload CSV 入库后可直接跑）**：
+  ```bash
+  python3 scripts/run_matrix.py \
+    --model-pairs opt-1.3b:opt-6.7b,llama2-7b:llama2-13b,palm-8b:palm-30b \
+    --algorithms npu_only,specpim,gpu_only,ahasd_full \
+    --workload-trace workloads/d2_prod_<TBD>.csv \
+    --max-draft-length 4 \
+    --output-dir workflow/runs/d2_prod \
+    --cell-timeout-s 7200
+  ```
+  估墙钟 6-12 h（和 D1 同量级，12 cells）
+- **状态**：✅ infra + pilot 完成；🔲 prod 12-cell 矩阵等 workload CSV + 用户决策
+- **产物**：`workflow/runs/d2_pilot_opt125m/{matrix.csv, matrix.json, 4×cell dir}`
 
 ### D3 — W3 NPU/PIM 利用率分解图
 - **状态**：🔲 未开始
@@ -491,3 +515,4 @@
 | 2026-04-21 | C2 完成（issue #17）：`SpecDecodeScheduler::request_rank_switch` 加 `if (_ahasd == nullptr) return;` 门控，把 GTSU 定义为 AHASD-only 机制（pim_only 不再付 GTSU 周期，与 SpecPIM 论文静态通道分配语义一致）；新 overlay `configs/baselines/specpim.json` 作为 W4 SOTA 对比参考；冒烟 4 轴确认 pim_only/specpim GTSU switches 从 216 降到 0，ahasd_full 仍保留 216 次（回归守门） |
 | 2026-04-21 | C3 完成（issue #19）：overlay-only 的 GPU-only proxy —— 放大 DRAM 子系统（`dram_channels` 16→32、`dram_freq` 800→1600，HBM3-class），不动核数/拓扑；第 4 列 SOTA 入位。冒烟 `gpu_only` 对 `npu_only` 1.926×，对 `specpim` 1.926×；`ahasd_full` 对 `specpim` 仅 1.001× —— 论文 1.8-2× speedup claim 确认只能在 D1/D2 大 workload 里验收，此处作为规模依据记录 |
 | 2026-04-21 | D1 infra 完成（issue #21）：新增 `ahasd_none/ahasd_aau/ahasd_aau_edc` progressive overlays + `scripts/run_matrix.py` 笛卡尔积 + resume 驱动；opt-125m pilot 四轴 cycles 单调改善 5.157M → 5.142M，energy 153.50 → 149.81 mJ；prod 12-cell 大矩阵（opt-1.3b×6.7b + llama2 + palm，估 6-12 h 墙钟）入库待跑 |
+| 2026-04-21 | D2 infra + pilot 完成（issue #23）：零新代码（复用 C1-C3 的四列 overlay + D1 的 `run_matrix.py`），opt-125m 4 列 pilot 跑出 gpu_only 1.926×、ahasd_full / specpim = 1.001×，再次确认大 workload prod 矩阵是唯一能复现论文 1.5-2× speedup 的路径；prod 12-cell 命令+workload 依赖同 D1 |
