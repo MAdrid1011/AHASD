@@ -1,0 +1,16 @@
+{
+  "_doc": "W4 SpecPIM baseline — the canonical prior-art comparison. PIM is on for attention acceleration (AAU fusion stays enabled because SpecPIM does accelerate attention on PIM). AHASD's adaptive stack (EDC/TVC/GTSU) is OFF, matching SpecPIM's static operator-level synchronous schedule with a fixed draft length. With `_ahasd==nullptr` the rank-switch lambda in SpecDecodeScheduler no longer fires, so this overlay exercises the true static-PIM-allocation regime SpecPIM describes.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "enable_ahasd": false,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "max_draft_length": 4,
+  "pim_enable": true,
+  "pim_channel_mask": "",
+  "pim_channel_stride": 2,
+  "pim_clock_mhz": 800,
+  "pim_enable_aau_fusion": true,
+  "pim_aau_fusion_ratio": 0.75,
+  "pim_gtsu_switch_ns": 55
+}
