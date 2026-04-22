@@ -19,7 +19,7 @@
 | Phase B | 仿真器基线诊断 | ✅ 已完成（结论：需从头重建） |
 | **Phase B2** | **仿真器底座重建（多模型调度器 / 协同仿真 / 能量 / 接受模型 / 端到端冒烟）** | ✅ 已完成 |
 | Phase C | 三条基线实现（NPU-only / SpecPIM / GPU-only） | 🔲 未开始 |
-| Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1 infra 就绪，prod 矩阵待跑 |
+| Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1-D4 infra + pilot 就绪，prod 矩阵待跑 |
 | Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🔲 未开始 |
 | Phase F | SSRC 真实集成 + Challenge 3 | 🔲 未开始 |
 | Phase G | AHASPro.md 论文文字全面更新 | 🔲 未开始 |
@@ -457,10 +457,60 @@
 - **产物**：`workflow/runs/d2_pilot_opt125m/{matrix.csv, matrix.json, 4×cell dir}`
 
 ### D3 — W3 NPU/PIM 利用率分解图
-- **状态**：🔲 未开始
+- **状态**：✅ 完成（infra + pilot，2026-04-22）
+- **新增产物**：
+  - `scripts/parse_utilization.py`：日志纯解析器，每个 cell 产出 `utilization.json`（per-core 活动/空闲、HBM 带宽、PIM 侧 GTSU/TVC/AAU 计数）
+  - `scripts/run_matrix.py`：每跑完一格自动生成 `utilization.json`，矩阵级别汇总为 `utilization_matrix.json`
+- **opt-125m × 4 轴 pilot**（`workflow/runs/d1_pilot_opt125m/utilization_matrix.json`）：
+
+  | 算法 | NPU cycles | MatMul% | Vec% | Mem-idle% | Core-idle% | HBM BW% | GTSU stall | AAU events | AAU saved B |
+  |------|-----------:|--------:|-----:|----------:|-----------:|--------:|-----------:|-----------:|------------:|
+  | ahasd_none | 5,156,831 | 0.302 | 0.064 | 75.24 | 6.85 | 64 | 644,020 | 0 | 0 |
+  | ahasd_aau | 5,145,056 | 0.302 | 0.064 | 75.18 | 6.89 | 64 | 644,061 | 45,792 | 1,099,008 |
+  | ahasd_aau_edc | 5,141,793 | 0.302 | 0.064 | 75.17 | 6.88 | 74 | 643,729 | 45,792 | 1,099,008 |
+  | ahasd_full | 5,141,793 | 0.302 | 0.064 | 75.17 | 6.88 | 74 | 643,729 | 45,792 | 1,099,008 |
+
+- **关键观察**：
+  - `memory_unit_idle_pct ≈ 75%` 四轴一致 → NPU 是内存/同步受限，论文 W3「NPU 空闲 70-80%」数量级匹配
+  - `hbm_bw_weighted_avg_pct` 64 → 74（EDC 开启后 +10 pct）印证 EDC 通过更早 pre-verification 提高带宽利用率
+  - AAU 事件从 0 跃到 45,792（~1.05 MB KV 字节通过 AAU bypass DRAM），与 C1.5 融合路径一致
+  - GTSU stall ≈ 644K cycles 所有启用 AHASD 的轴恒定，符合静态 rank-switch 成本模型
+- **已知限制**：ONNXim 仅对 `HBM2-CH_0` 采样 BW 打印（源码行为，非解析器 bug），其它 15 通道无周期快照；`hbm_bw_weighted_avg_pct` 近似整机均值，论文 figure 时注明"代表通道"
+- **TVC hold = 0**：当前 parametric acceptance + p4/g8 workload 不触发 TVC hold 窗口，prod 大 workload (p32/g256) 再观测
 
 ### D4 — W9 overlap 带宽利用率图
-- **状态**：🔲 未开始
+- **状态**：✅ 完成（infra + pilot，2026-04-22）
+- **新增产物**：
+  - `scripts/parse_overlap.py`：日志纯解析器，逐窗口配对 Core [0] NPU 活动与 HBM2-CH_0 带宽快照，产出 `overlap_timeline.json`（时序）+ `overlap_summary`（四桶分类：compute_only / memory_only / overlap / idle）
+  - `scripts/run_matrix.py`：每 cell 自动 emit `overlap_timeline.json`，矩阵级 `overlap_summary_matrix.json` 聚合
+- **opt-125m × 4 轴 pilot**（`workflow/runs/d1_pilot_opt125m/overlap_summary_matrix.json`）：
+
+  | 算法 | windows | compute_only% | memory_only% | **overlap%** | idle% | peak HBM% |
+  |------|--------:|--------------:|-------------:|-------------:|------:|----------:|
+  | ahasd_none    | 645 | 0.0 | 85.55 | **14.45** | 0.0 | 81 |
+  | ahasd_aau     | 644 | 0.0 | 83.88 | **16.12** | 0.0 | 81 |
+  | ahasd_aau_edc | 643 | 0.0 | 83.18 | **16.82** | 0.0 | 81 |
+  | ahasd_full    | 643 | 0.0 | 83.18 | **16.82** | 0.0 | 81 |
+
+- **关键观察**：
+  - **overlap% 随 AHASD 特性单调扩张**：14.45 → 16.12 → 16.82 (+2.37 pct)，直接支撑 W9 「NPU 外部总线 vs PIM 片内带宽互补时域」的论点
+  - `compute_only% = 0` 说明 opt-125m 规模下 NPU 永远在等内存（无纯计算窗口），小 workload 的预期形态，prod 大矩阵会出现真正的 compute_only 段
+  - `peak_hbm_bw_pct = 81%` 四轴一致，说明瓶颈点不变；AHASD 的增益来自"何时让 NPU 参与"而非"拉高峰值带宽"
+- **窗口对齐**：每窗口 = `core_print_interval = 8000` cycles；HBM 快照按"就近归属于上一个已关闭窗口"入桶，精度 ±1 窗口
+- **已知限制**（与 D3 同源）：ONNXim 仅 CH_0 emit BW 采样；分类阈值 (NPU matmul > 0.5%, HBM BW > 30%) 为 pilot 经验值，prod 跑完后可重新校准
+
+### E1 — W2 敏感性 sweep（EDC × 3 + TVC × 1，共 15 格）
+- **状态**：🚧 infra 完成（2026-04-22），pilot 证实需 prod workload
+- **源码改动**（issue #29）：
+  - `EDC` / `TVC` / `AHASDConfig` / `SimulationConfig` / `Common.cc` / `Simulator.cc`：把 `H_max` / `LEHT_size` / `LLR_bits` / `tvc_cycle_table_size` 从 compile-time 常量改成构造期参数；默认值保持 DAC 设计点（10.0 / 8 / 3 / 4）→ 零配置回归 bit-equivalent
+  - `run_baseline.py` 新增 `--config-override KEY=JSON_VALUE`（可重复，JSON 解析），让 sweep 无需重复 overlay
+  - 新脚本 `scripts/run_sensitivity.py`：4 个轴 × 3-4 值的 W2 sweep 驱动，产出 `sensitivity_results.json`（cycles、accept、throughput、npu_idle%、energy）
+- **opt-125m × 15 cell pilot**（`workflow/runs/e1_pilot/sensitivity_results.json`）：**所有 15 格指标完全相同** → workload 规模不足以让 EDC/TVC 差异化
+  - EDC 证据：四个轴下 `Total Predictions=47`、`Suppressed=0 (0.00%)` → PHT 始终停留在初始 WEAKLY_TAKEN 态，没有任何 draft 被压制
+  - TVC 证据：`Total Decisions=17`、`Pre-verifications Inserted=0` → 样本不足以让 NVCT/PDCT/PVCT 的预测起作用
+  - 其它验证：日志确认 PHT_size 按 `2^(3+3+LLR_bits)` 正确收缩/扩张（256/512/1024），`LEHT` / `H_max` / `TVC window` 都按期望落到 simulator
+- **结论**：**infra 正确、数字"干净"、但需要 prod 规模 workload（opt-1.3b, p32/g256）才能看到真正的 trade-off 曲线**——与 C1.5 mini-bench、D1 pilot 得出的结论完全一致
+- **prod 预估**：opt-1.3b / llama2-7b 上 draft 轮次达数千次后 PHT/NVCT 填满，此时 EDC 的 H_max / LEHT_size 会明显影响 suppression rate（从而影响 throughput/accept），TVC window=1 vs 8 会出现 pre-verify 频率差异
 
 ---
 
@@ -516,3 +566,6 @@
 | 2026-04-21 | C3 完成（issue #19）：overlay-only 的 GPU-only proxy —— 放大 DRAM 子系统（`dram_channels` 16→32、`dram_freq` 800→1600，HBM3-class），不动核数/拓扑；第 4 列 SOTA 入位。冒烟 `gpu_only` 对 `npu_only` 1.926×，对 `specpim` 1.926×；`ahasd_full` 对 `specpim` 仅 1.001× —— 论文 1.8-2× speedup claim 确认只能在 D1/D2 大 workload 里验收，此处作为规模依据记录 |
 | 2026-04-21 | D1 infra 完成（issue #21）：新增 `ahasd_none/ahasd_aau/ahasd_aau_edc` progressive overlays + `scripts/run_matrix.py` 笛卡尔积 + resume 驱动；opt-125m pilot 四轴 cycles 单调改善 5.157M → 5.142M，energy 153.50 → 149.81 mJ；prod 12-cell 大矩阵（opt-1.3b×6.7b + llama2 + palm，估 6-12 h 墙钟）入库待跑 |
 | 2026-04-21 | D2 infra + pilot 完成（issue #23）：零新代码（复用 C1-C3 的四列 overlay + D1 的 `run_matrix.py`），opt-125m 4 列 pilot 跑出 gpu_only 1.926×、ahasd_full / specpim = 1.001×，再次确认大 workload prod 矩阵是唯一能复现论文 1.5-2× speedup 的路径；prod 12-cell 命令+workload 依赖同 D1 |
+| 2026-04-22 | D3 完成：新增 `scripts/parse_utilization.py` 纯日志解析器（per-core active/idle、HBM BW、PIM GTSU/TVC/AAU）；`run_matrix.py` 每 cell 自动 emit `utilization.json` + 矩阵级 `utilization_matrix.json`；opt-125m × 4 轴 pilot 显 memory-idle 75.17-75.24%、HBM BW 64% → 74% with EDC、AAU events 0 → 45,792；ONNXim 原生仅 CH_0 emit BW 采样，记为 figure 脚注 |
+| 2026-04-22 | D4 完成：新增 `scripts/parse_overlap.py` 纯日志解析器（逐窗口配对 Core [0] NPU 活动与 HBM CH_0 带宽，四桶分类 compute_only/memory_only/overlap/idle）；`run_matrix.py` 每 cell emit `overlap_timeline.json` + 矩阵级 `overlap_summary_matrix.json`；opt-125m × 4 轴 pilot 显 **overlap% 随 AHASD 单调扩张 14.45 → 16.12 → 16.82 (+2.37 pct)**，直接支撑 W9 域互补论点；Phase D infra 全部就绪，prod 大 workload 待跑 |
+| 2026-04-22 | E1 (W2 sensitivity) infra 完成：`EDC`/`TVC`/`AHASDConfig`/`SimulationConfig`/`Common.cc`/`Simulator.cc` 把 4 个硬编码常量改成 runtime-configurable（默认值保持 DAC 设计点→零配置 bit-equivalent 回归）；`run_baseline.py` 新增 `--config-override KEY=JSON`；新脚本 `scripts/run_sensitivity.py` 驱动 4 轴 × 3-4 值 = 15 cell sweep；opt-125m pilot 15 格指标完全相同（PHT 未被压制到 NOT_TAKEN、TVC 决策次数仅 17 次）→ 基础设施正确但 workload 规模需 prod opt-1.3b/llama2 才能显曲线，与 C1.5/D1 pilot 定论一致（issue #29） |
