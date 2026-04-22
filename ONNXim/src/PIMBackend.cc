@@ -36,6 +36,9 @@ PIMBackend::PIMBackend(SimulationConfig config) : _config(config) {
       static_cast<uint32_t>((static_cast<double>(_config.pim_gtsu_switch_ns) * 1e-9) *
                             (static_cast<double>(_config.core_freq) * 1e6));
   if (_gtsu_switch_npu_cycles == 0) _gtsu_switch_npu_cycles = 1;
+  _aau_bypass_npu_cycles =
+      static_cast<uint32_t>((static_cast<double>(_config.pim_aau_bypass_ns) * 1e-9) *
+                            (static_cast<double>(_config.core_freq) * 1e6));
 
   spdlog::info("[PIMBackend] active: pim_channels={}/{} pim_clock={} MHz npu/pim ratio={:.3f} "
                "gtsu_switch={} ns ({} NPU cycles) aau_fusion={} ratio={:.2f}",
@@ -87,12 +90,10 @@ uint32_t PIMBackend::on_dram_push(uint32_t cid, MemoryAccess* req, uint64_t npu_
     }
     if (req->request_identity_tagged) _stats.total_attention_class_requests++;
   }
-  if (should_apply_aau_fusion(req)) {
-    const uint64_t saved = static_cast<uint64_t>(
-        static_cast<double>(req->size) * static_cast<double>(_config.pim_aau_fusion_ratio));
-    _stats.total_aau_fused_events++;
-    _stats.total_aau_fusion_saved_bytes += saved;
-  }
+  // Note: AAU fusion statistics are now emitted in try_aau_bypass(), which
+  // Simulator calls BEFORE on_dram_push so fused requests never hit DRAM.
+  // Anything reaching on_dram_push is non-fused traffic that still pays
+  // GTSU/TVC holds on PIM channels.
   uint64_t hold_until = _per_channel_hold_until_npu[cid];
   if (hold_until > npu_cycle) {
     uint64_t hold = hold_until - npu_cycle;
@@ -101,6 +102,31 @@ uint32_t PIMBackend::on_dram_push(uint32_t cid, MemoryAccess* req, uint64_t npu_
         hold, std::numeric_limits<uint32_t>::max()));
   }
   return 0;
+}
+
+bool PIMBackend::try_aau_bypass(uint32_t cid, MemoryAccess* req,
+                                uint64_t /*npu_cycle*/) {
+  if (!_active || !is_pim_channel(cid)) return false;
+  if (!should_apply_aau_fusion(req)) return false;
+  if (_aau_bypass_npu_cycles == 0) return false;
+  // AAU absorbs this K/V fetch entirely — the request will complete via
+  // the bypass queue in Simulator with _aau_bypass_npu_cycles of latency.
+  // Since Simulator skips on_dram_push for bypassed requests, ALL stats
+  // normally maintained there must be attributed here for this request.
+  _stats.total_pim_requests++;
+  if (req->write) {
+    _stats.total_pim_write_requests++;
+    _stats.total_pim_write_bytes += req->size;
+  } else {
+    _stats.total_pim_read_requests++;
+    _stats.total_pim_read_bytes += req->size;
+  }
+  _stats.total_attention_class_requests++;
+  const uint64_t saved = static_cast<uint64_t>(
+      static_cast<double>(req->size) * static_cast<double>(_config.pim_aau_fusion_ratio));
+  _stats.total_aau_fused_events++;
+  _stats.total_aau_fusion_saved_bytes += saved;
+  return true;
 }
 
 void PIMBackend::on_dram_pop(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle) {
@@ -180,6 +206,8 @@ void PIMBackend::print_statistics(uint64_t final_npu_cycle) const {
                _stats.total_pim_read_bytes, _stats.total_pim_write_bytes);
   spdlog::info("[PIMBackend] attention-class requests through PIM: {}",
                _stats.total_attention_class_requests);
+  spdlog::info("[PIMBackend] AAU bypass latency (NPU cycles/event): {}",
+               _aau_bypass_npu_cycles);
   spdlog::info("[PIMBackend] AAU fused events: {} ; saved bytes: {}",
                _stats.total_aau_fused_events, _stats.total_aau_fusion_saved_bytes);
   spdlog::info("[PIMBackend] GTSU switches: {} ; total stall cycles: {}",

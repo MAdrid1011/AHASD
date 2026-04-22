@@ -79,6 +79,7 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
   // B2.2 — instantiate PIM co-simulation driver (no-op when pim_enable=false).
   _cosim = std::make_unique<CoSimDriver>(_config);
   _pim_hold_queues.resize(_n_memories);
+  _pim_bypass_queues.resize(_n_memories);
   if (_cosim->is_active()) {
     spdlog::info("[Simulator] PIM co-sim active; per-channel hold queues sized to {}", _n_memories);
   }
@@ -230,21 +231,49 @@ void Simulator::cycle() {
         if (!_icnt->is_empty(_n_cores + mem_id) &&
             !_dram->is_full(mem_id, _icnt->top(_n_cores + mem_id))) {
           MemoryAccess* front = _icnt->top(_n_cores + mem_id);
-          // B2.2 — PIM overlay: may request that this push be held for a few
-          // NPU cycles (GTSU switch, TVC pre-verify window). When active and
-          // a hold is requested, park the request rather than passing to DRAM.
-          uint32_t hold = 0;
+          // B2.2/issue-15 — AAU bypass: attention-class K/V reads on PIM
+          // channels never hit DRAM; AAU serves them with a short bypass
+          // latency and routes the response back through ICNT directly.
+          bool bypassed = false;
           if (_cosim && _cosim->is_active()) {
-            hold = _cosim->on_dram_push(mem_id, front, _core_cycles);
+            bypassed = _cosim->try_aau_bypass(mem_id, front, _core_cycles);
           }
-          if (hold == 0) {
-            _dram->push(mem_id, front);
+          if (bypassed) {
+            // Build fake completion: response mode flips to read-done.
+            front->request = false;
+            _pim_bypass_queues[mem_id].push(
+                {_core_cycles + _cosim->bypass_latency_npu_cycles(), front});
+            _icnt->pop(_n_cores + mem_id);
+            _nr_to_mem++;
+            _tot_nr_to_mem++;
           } else {
-            _pim_hold_queues[mem_id].push({_core_cycles + hold, front});
+            // B2.2 — PIM overlay: may request that this push be held for a
+            // few NPU cycles (GTSU switch, TVC pre-verify window).
+            uint32_t hold = 0;
+            if (_cosim && _cosim->is_active()) {
+              hold = _cosim->on_dram_push(mem_id, front, _core_cycles);
+            }
+            if (hold == 0) {
+              _dram->push(mem_id, front);
+            } else {
+              _pim_hold_queues[mem_id].push({_core_cycles + hold, front});
+            }
+            _icnt->pop(_n_cores + mem_id);
+            _nr_to_mem++;
+            _tot_nr_to_mem++;
           }
-          _icnt->pop(_n_cores + mem_id);
-          _nr_to_mem++;
-          _tot_nr_to_mem++;
+        }
+        // B2.2/issue-15 — drain AAU bypass queue: ready requests go straight
+        // into the ICNT response path (skipping DRAM entirely).
+        if (_cosim && _cosim->is_active() && !_pim_bypass_queues[mem_id].empty()) {
+          auto& bfront = _pim_bypass_queues[mem_id].front();
+          if (bfront.first <= _core_cycles &&
+              !_icnt->is_full(_n_cores + mem_id, bfront.second)) {
+            _icnt->push(_n_cores + mem_id, get_dest_node(bfront.second), bfront.second);
+            _pim_bypass_queues[mem_id].pop();
+            _nr_from_mem++;
+            _tot_nr_from_mem++;
+          }
         }
         // Pop response to ICNT from dram
         if (!_dram->is_empty(mem_id) &&
@@ -464,6 +493,9 @@ bool Simulator::running() {
   // B2.2 — outstanding PIM holds count as running work.
   if (_cosim && _cosim->is_active()) {
     for (const auto& q : _pim_hold_queues) {
+      if (!q.empty()) { running = true; break; }
+    }
+    for (const auto& q : _pim_bypass_queues) {
       if (!q.empty()) { running = true; break; }
     }
   }

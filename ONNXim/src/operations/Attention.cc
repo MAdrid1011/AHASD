@@ -248,12 +248,14 @@ void Attention::initialize_instructions(Tile* tile, int head_idx, int num_heads)
         key_addrs.push_back(key_addr + *itr);
         value_addrs.push_back(value_addr + *itr);
     }
+    // Tag KV traffic as attention-class so PIMBackend/AAU can fuse it.
     tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
         .opcode = Opcode::MOVIN,
         .dest_addr = sram_k_ofs,
         .size = (uint32_t)value_addrs.size(),
         .src_addrs = key_addrs,
         .operand_id = _INPUT_OPERAND + 1,  // key
+        .request_identity_tagged = true
     }));
     tile->instructions.push_back(std::make_unique<Instruction>(Instruction{
         .opcode = Opcode::MOVIN,
@@ -261,6 +263,7 @@ void Attention::initialize_instructions(Tile* tile, int head_idx, int num_heads)
         .size = (uint32_t)value_addrs.size(),
         .src_addrs = value_addrs,
         .operand_id = _INPUT_OPERAND + 2,  // value
+        .request_identity_tagged = true
     }));
     for (int h_ofs = 0; h_ofs < num_heads; h_ofs++) {
         int h_idx = head_idx + h_ofs;
@@ -380,6 +383,7 @@ void Attention::initialize_instructions(Tile* tile, Mapping mapping, int head_id
         .size = (uint32_t)value_addrs.size(),
         .src_addrs = key_addrs,
         .operand_id = _INPUT_OPERAND + 1,  // key
+        .request_identity_tagged = true
     }));
 
     for (int h_ofs = 0; h_ofs < num_heads; h_ofs++) {
@@ -413,6 +417,7 @@ void Attention::initialize_instructions(Tile* tile, Mapping mapping, int head_id
         .size = (uint32_t)value_addrs.size(),
         .src_addrs = value_addrs,
         .operand_id = _INPUT_OPERAND + 2,  // value
+        .request_identity_tagged = true
     }));
      // -- compute -- //     
     // GEMM (q*k -> l)

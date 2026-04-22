@@ -165,6 +165,8 @@ SimulationConfig initialize_config(json config) {
     parsed_config.pim_aau_fusion_ratio = config["pim_aau_fusion_ratio"];
   if (config.contains("pim_gtsu_switch_ns"))
     parsed_config.pim_gtsu_switch_ns = config["pim_gtsu_switch_ns"];
+  if (config.contains("pim_aau_bypass_ns"))
+    parsed_config.pim_aau_bypass_ns = config["pim_aau_bypass_ns"];
 
   /* B2.4 — energy model coefficients (LUT, per pJ). All optional. */
   if (config.contains("energy_npu_active_pj_per_cycle"))

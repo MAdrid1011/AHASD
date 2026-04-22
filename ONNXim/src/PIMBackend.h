@@ -47,6 +47,14 @@ class PIMBackend {
   // TVC are the B2.3 users of this hold-back.
   uint32_t on_dram_push(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
 
+  // AAU bypass path (B2.3+): when attention-class traffic can be serviced
+  // directly by PIM-internal AAU (score compute + partial reductions), the
+  // request never hits DRAM. `try_aau_bypass` returns true iff the request
+  // was consumed by AAU — the caller MUST skip DRAM push and route the
+  // request back into the response path after `bypass_latency_npu_cycles`.
+  bool try_aau_bypass(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
+  uint64_t bypass_latency_npu_cycles() const { return _aau_bypass_npu_cycles; }
+
   // Called by Simulator when a memory response leaves DRAM → ICNT.
   void on_dram_pop(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
 
@@ -104,6 +112,7 @@ class PIMBackend {
   uint32_t _num_pim_channels = 0;
   double _npu_to_pim_ratio = 1.0;  // pim_clock / npu_clock
   uint32_t _gtsu_switch_npu_cycles = 0;
+  uint32_t _aau_bypass_npu_cycles = 0;
 
   Stats _stats;
 };
