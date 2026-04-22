@@ -20,7 +20,7 @@
 | **Phase B2** | **仿真器底座重建（多模型调度器 / 协同仿真 / 能量 / 接受模型 / 端到端冒烟）** | ✅ 已完成 |
 | Phase C | 三条基线实现（NPU-only / SpecPIM / GPU-only） | 🔲 未开始 |
 | Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1-D4 infra + pilot 就绪，prod 矩阵待跑 |
-| Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🔲 未开始 |
+| Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🚧 E1 infra + E2 合成模型完成，prod sweep 待跑 |
 | Phase F | SSRC 真实集成 + Challenge 3 | 🔲 未开始 |
 | Phase G | AHASPro.md 论文文字全面更新 | 🔲 未开始 |
 
@@ -512,6 +512,31 @@
 - **结论**：**infra 正确、数字"干净"、但需要 prod 规模 workload（opt-1.3b, p32/g256）才能看到真正的 trade-off 曲线**——与 C1.5 mini-bench、D1 pilot 得出的结论完全一致
 - **prod 预估**：opt-1.3b / llama2-7b 上 draft 轮次达数千次后 PHT/NVCT 填满，此时 EDC 的 H_max / LEHT_size 会明显影响 suppression rate（从而影响 throughput/accept），TVC window=1 vs 8 会出现 pre-verify 频率差异
 
+### E2 — W6/W11 AAU RTL 综合与面积/功耗表刷新
+- **状态**：✅ 分析模型就绪（2026-04-22）。真实 RTL + Yosys/OpenROAD 综合链在当前仓库外，改由参数化分析模型承接，下游论文/文档共用一条数据链。
+- **新增文件**：
+  - `scripts/hardware_cost_model.py`：28nm-LP 参数化成本模型（SRAM cell / NAND2 / FF / 动静态功耗系数明写，可审计）。数据类包含 `TechNode` / `HWProfile` / `AAUProfile` / `Cost`，暴露 `edc_cost` / `tvc_cost` / `queue_cost` / `gtsu_cost` / `aau_cost` / `compute_breakdown` / `render_w6_markdown`
+  - `scripts/run_synthesis_sweep.py`：E2 驱动脚本，一次性产出 DAC baseline + W11 优化档 + E1 敏感性行，写入 `workflow/runs/e2/*`
+  - `scripts/validate_hardware_costs.py`：瘦身为库消费者，断言 DAC <3% / W11 <2% 两条 claim，**两条均通过**
+- **产物**（`workflow/runs/e2/`）：
+  - `w6_dac_baseline.md`：§5.5 W6 模板表，DAC 基线 （FP16 AAU、无共享）
+  - `w6_w11_optimized.md`：W11 优化档（INT8 AAU + 归约树/控制路径时分复用）
+  - `w6_comparison.md`：模块级 DAC vs W11 对照
+  - `e1_axis_sweep.md`：15 格 E1 sweep cell 对应的面积/功耗行
+  - `synthesis_breakdown.json`：上述所有数字的机器可读快照
+- **关键结论**：
+
+  | 配置 | 总面积 (mm²) | Die 占比 | 总功耗 (mW) | AAU 面积 | 论文目标 |
+  |------|-------------:|---------:|------------:|---------:|:--------:|
+  | DAC baseline | 1.2517 | 2.50% | 25.12 | 1.25 mm² | < 3% ✓ |
+  | W11 optimised | 0.7087 | 1.42% | 15.58 | 0.71 mm² | ≤ 2% ✓ |
+
+  - W11（INT8 + 资源共享）相对 DAC 基线面积 −43.4%，功耗 −38.0%，主要来自 AAU 子模块（AAU 单项面积 1.25 → 0.71 mm²）
+  - EDC/TVC/AsyncQueue/GTSU 控制面逻辑合计 ≈ 0.0017 mm²（<0.01% die），印证论文 "控制逻辑面积可忽略" 的定性描述
+  - E1 轴 × E2 模型交叉：`edc_leht_size={4,8,12,16}` 仅改动 24-96 bit SRAM、`edc_llr_bits={2,3,4}` 让 PHT 在 256-1024 entry 之间收缩、`tvc_cycle_table_size={1,2,4,8}` 最大额外 0.00005 mm²；对 die 占比完全无扰动
+- **限制与可审计性**：分析模型把 tech constants 全部写死在 `TechNode` dataclass 里（CACTI-style SRAM cell、NAND2 footprint、动静态功耗系数），并在顶部 docstring 引用了 Samsung HBM-PIM (ISSCC'21) / AttAcc (HPCA'23) / GDDR6-AiM (ISSCC'22) 作为 AAU 子模块 sizing 的 anchor。未来接上真实 Yosys+OpenROAD 产物只需替换 `hardware_cost_model.py`，下游 §5.5 表格生成链零改动
+- **文档刷新**：`docs/HardwareComponents.md` 总览表、§AAU Hardware Cost 小节已全部改为从 E2 模型读取的数字（同时列出 DAC/W11 两档），明确 source-of-truth 指向 `scripts/hardware_cost_model.py`
+
 ---
 
 ## Phase F：SSRC 真实集成
@@ -569,3 +594,4 @@
 | 2026-04-22 | D3 完成：新增 `scripts/parse_utilization.py` 纯日志解析器（per-core active/idle、HBM BW、PIM GTSU/TVC/AAU）；`run_matrix.py` 每 cell 自动 emit `utilization.json` + 矩阵级 `utilization_matrix.json`；opt-125m × 4 轴 pilot 显 memory-idle 75.17-75.24%、HBM BW 64% → 74% with EDC、AAU events 0 → 45,792；ONNXim 原生仅 CH_0 emit BW 采样，记为 figure 脚注 |
 | 2026-04-22 | D4 完成：新增 `scripts/parse_overlap.py` 纯日志解析器（逐窗口配对 Core [0] NPU 活动与 HBM CH_0 带宽，四桶分类 compute_only/memory_only/overlap/idle）；`run_matrix.py` 每 cell emit `overlap_timeline.json` + 矩阵级 `overlap_summary_matrix.json`；opt-125m × 4 轴 pilot 显 **overlap% 随 AHASD 单调扩张 14.45 → 16.12 → 16.82 (+2.37 pct)**，直接支撑 W9 域互补论点；Phase D infra 全部就绪，prod 大 workload 待跑 |
 | 2026-04-22 | E1 (W2 sensitivity) infra 完成：`EDC`/`TVC`/`AHASDConfig`/`SimulationConfig`/`Common.cc`/`Simulator.cc` 把 4 个硬编码常量改成 runtime-configurable（默认值保持 DAC 设计点→零配置 bit-equivalent 回归）；`run_baseline.py` 新增 `--config-override KEY=JSON`；新脚本 `scripts/run_sensitivity.py` 驱动 4 轴 × 3-4 值 = 15 cell sweep；opt-125m pilot 15 格指标完全相同（PHT 未被压制到 NOT_TAKEN、TVC 决策次数仅 17 次）→ 基础设施正确但 workload 规模需 prod opt-1.3b/llama2 才能显曲线，与 C1.5/D1 pilot 定论一致（issue #29） |
+| 2026-04-22 | E2 (W6/W11 synthesis) 完成：新增参数化硬件成本模型 `scripts/hardware_cost_model.py`（28nm-LP + CACTI/NAND2/FF 系数明写 + Samsung HBM-PIM / AttAcc / GDDR6-AiM 作为 anchor），驱动脚本 `scripts/run_synthesis_sweep.py` 产出 `workflow/runs/e2/{w6_dac_baseline,w6_w11_optimized,w6_comparison,e1_axis_sweep}.md` + JSON 快照；DAC baseline = 1.2517 mm² / 2.50% die / 25.12 mW，W11 优化档（INT8 AAU + 归约树/控制时分复用）= 0.7087 mm² / 1.42% die / 15.58 mW（−43% 面积 / −38% 功耗），同时满足 <3% 与 ≤2% 两条 claim；`validate_hardware_costs.py` 瘦身为库消费者 + claim assertion；`docs/HardwareComponents.md` 总览表 + AAU Hardware Cost 小节全量刷新，DAC/W11 两档并列展示 |
