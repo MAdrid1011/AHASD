@@ -366,7 +366,27 @@
 - **状态**：✅ 已完成（overlay + 门控修复，W4 speedup 数据等 D1/D2 大 workload 矩阵统一产出）
 - **产物**：`configs/baselines/specpim.json`、`ONNXim/src/scheduler/SpecDecodeScheduler.cc` (rank-switch 门控)、`workflow/runs/c2/{npu_only,pim_only,specpim,ahasd_full}/`
 
-### C3 — W3/W9 图表数据提取
+### C3 — GPU-only proxy baseline（W4 SOTA 第 4 列）
+- **做法**：overlay-only（不改源码）把"GPU 特征"proxy 到 NPU 实体上
+- **建模选择（2026-04-21）**：
+  - ONNXim 现有 icnt 拓扑 `fly_c4_m32.icnt` 对应 4 核 × 32 memport。扩 num_cores 需要新建拓扑文件（第一次尝试 `num_cores=8` 直接 SIGFPE）。最干净的 proxy：**不动核数，只放大内存子系统** —— `dram_channels` 16→32、`dram_freq` 800→1600（HBM3-class），PIM/AHASD 全关
+  - 新 overlay `configs/baselines/gpu_only.json`（`_doc` 里把这个 trade-off 写进去了）
+- **C3 四轴 SOTA matrix（opt-125m, smoke_p4_g8_2req, max_k=4, 参数化）**：
+
+  | 轴 | cycles | energy_mJ | vs_npu | vs_specpim |
+  |----|--------|-----------|--------|------------|
+  | npu_only | 5,150,438 | 128.89 | 1.000× | 1.000× |
+  | gpu_only | 2,673,655 | 124.99 | **1.926×** | **1.926×** |
+  | specpim | 5,149,054 | 149.79 | 1.000× | 1.000× |
+  | ahasd_full | 5,141,793 | 149.81 | 1.002× | 1.001× |
+- **诚实观察**：
+  - GPU-only 在 opt-125m 这个 compute-bound attention 场景里 2× HBM3 带宽就吃掉了 1.93× 领先 —— 反证了"小模型上访存不是瓶颈"并非绝对，在这里反倒是 NPU 4 核 × 16ch 的小带宽被打穿了
+  - AHASD 在这个规模对 SpecPIM 只有 **1.001×**，论文 1.8-2.0× 的数字只能在 D1/D2 真正的 memory-bound 大模型矩阵（opt-6.7b + gen ≥ 128 + 多请求）里验收
+  - energy 上 gpu_only 最低（124.99 mJ），因为 cycles 少一半、NPU idle 能量累积少；对应 paper 里"GPU 虽快但能效差"的文字结论**反了**—— 这是 proxy 建模（只放大内存，没放大核数/频率）的副作用，D2 要在文字里加一句说明
+- **状态**：✅ 已完成（overlay 入库，D2 可以直接用四列跑大 workload）
+- **产物**：`configs/baselines/gpu_only.json`、`workflow/runs/c3/{npu_only,gpu_only,specpim,ahasd_full}/`
+
+### C4 — W3/W9 图表数据提取（原 C3 计划）
 - **目标**：从 cycle-accurate trace 提取 NPU/PIM idle 比例 + 带宽利用率
 - **状态**：🔲 未开始
 
@@ -429,3 +449,4 @@
 | 2026-04-21 | B2.4 完成：新增 `EnergyModel.{h,cc}` + 9 个 `energy_*` LUT 系数 + `SimulationConfig` / `Common.cc` 解析；Simulator 累积 ICNT 字节 + Core 能量 getter + PIMBackend stats 三路汇聚；`Total Energy: X mJ` 行首次出现在日志里；`run_single_config.py` 新增 11 条 breakdown 正则，`run_contract_eval.py` METRIC_KEYS 加 11 个子字段；冒烟产出 `Total Energy: 18.5439 mJ`（opt-125m/opt-125m-t smoke） |
 | 2026-04-21 | C1.5 完成（issue #15）：`Attention.cc` K/V MOVIN 补 `request_identity_tagged`（修复 "AAU 全程不触发" 的隐藏 bug），`PIMBackend::try_aau_bypass` + `_pim_bypass_queues` 让融合命中的请求完全绕过 DRAM（`pim_aau_bypass_ns=18`），新增 `pim_only` / `ahasd_noaau` overlay；opt-125m × 4 轴验证 AAU 事件从 0 跃到 58K、`ahasd_full - ahasd_noaau = -19K cycles / -4.7 mJ`；opt-1.3b probe 事件 10× 放大（45K→538K），但 p16/g32 规模仍不足以显 speedup — speedup 验收下沉到 D1 大 workload |
 | 2026-04-21 | C2 完成（issue #17）：`SpecDecodeScheduler::request_rank_switch` 加 `if (_ahasd == nullptr) return;` 门控，把 GTSU 定义为 AHASD-only 机制（pim_only 不再付 GTSU 周期，与 SpecPIM 论文静态通道分配语义一致）；新 overlay `configs/baselines/specpim.json` 作为 W4 SOTA 对比参考；冒烟 4 轴确认 pim_only/specpim GTSU switches 从 216 降到 0，ahasd_full 仍保留 216 次（回归守门） |
+| 2026-04-21 | C3 完成（issue #19）：overlay-only 的 GPU-only proxy —— 放大 DRAM 子系统（`dram_channels` 16→32、`dram_freq` 800→1600，HBM3-class），不动核数/拓扑；第 4 列 SOTA 入位。冒烟 `gpu_only` 对 `npu_only` 1.926×，对 `specpim` 1.926×；`ahasd_full` 对 `specpim` 仅 1.001× —— 论文 1.8-2× speedup claim 确认只能在 D1/D2 大 workload 里验收，此处作为规模依据记录 |
