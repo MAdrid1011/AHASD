@@ -144,6 +144,17 @@ SimulationConfig initialize_config(json config) {
     parsed_config.enable_aau = config["enable_aau"];
   if (config.contains("max_draft_length"))
     parsed_config.max_draft_length = config["max_draft_length"];
+  /* E1 — W2 sensitivity-sweep hyperparameters (all optional; omitting a
+   * key reproduces the DAC design point bit-identically).
+   */
+  if (config.contains("edc_h_max"))
+    parsed_config.edc_h_max = config["edc_h_max"];
+  if (config.contains("edc_leht_size"))
+    parsed_config.edc_leht_size = config["edc_leht_size"];
+  if (config.contains("edc_llr_bits"))
+    parsed_config.edc_llr_bits = config["edc_llr_bits"];
+  if (config.contains("tvc_cycle_table_size"))
+    parsed_config.tvc_cycle_table_size = config["tvc_cycle_table_size"];
   // B2.3 — SSRC config keys (enable_ssrc, enable_ssrc_proxy, enable_ssrc_trace,
   // ssrc_state_bytes_per_token, ssrc_resident_limit_bytes,
   // ssrc_confidence_threshold) were removed when the sidecar was deleted.

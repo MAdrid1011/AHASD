@@ -96,10 +96,18 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
     ahasd_config.pim_freq_mhz = _config.dram_freq;
     ahasd_config.npu_freq_mhz = _config.core_freq;
     ahasd_config.max_draft_length = _config.max_draft_length;
+    // E1 — W2 sensitivity-sweep hyperparameters.
+    ahasd_config.edc_h_max             = _config.edc_h_max;
+    ahasd_config.edc_leht_size         = _config.edc_leht_size;
+    ahasd_config.edc_llr_bits          = _config.edc_llr_bits;
+    ahasd_config.tvc_cycle_table_size  = _config.tvc_cycle_table_size;
     _ahasd = std::make_unique<AHASD::AHASDIntegration>(ahasd_config);
-    spdlog::info("[AHASD] Enabled - EDC:{} TVC:{} AAU:{} max_k={}",
+    spdlog::info("[AHASD] Enabled - EDC:{} TVC:{} AAU:{} max_k={} "
+                 "edc(H_max={:.2f} LEHT={} LLR={}b) tvc_window={}",
                  ahasd_config.enable_edc, ahasd_config.enable_tvc,
-                 ahasd_config.enable_aau, ahasd_config.max_draft_length);
+                 ahasd_config.enable_aau, ahasd_config.max_draft_length,
+                 ahasd_config.edc_h_max, ahasd_config.edc_leht_size,
+                 ahasd_config.edc_llr_bits, ahasd_config.tvc_cycle_table_size);
     if (_enable_ahasd && !(_cosim && _cosim->is_active())) {
       spdlog::warn("[AHASD] enabled without PIM co-sim: GTSU stalls and AAU "
                     "fusion accounting will be inert; EDC/TVC decisions still "

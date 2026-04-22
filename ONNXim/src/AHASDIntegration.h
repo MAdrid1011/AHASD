@@ -39,16 +39,26 @@ struct AHASDConfig {
   uint32_t max_draft_length = 16;
   uint32_t min_preverify_length = 2;
   uint32_t pre_verify_max = 8;
+  // E1 — sensitivity sweep hyperparameters. Defaults reproduce the
+  // DAC design point (LEHT=8, LLR=3b, H_max=10.0, TVC window=4).
+  float    edc_h_max      = DEFAULT_H_MAX;
+  uint32_t edc_leht_size  = DEFAULT_LEHT_SIZE;
+  uint32_t edc_llr_bits   = DEFAULT_LLR_BITS;
+  uint32_t tvc_cycle_table_size = DEFAULT_CYCLE_TABLE_SIZE;
 };
 
 class AHASDIntegration {
  public:
   explicit AHASDIntegration(const AHASDConfig& cfg) : config_(cfg) {
     if (config_.enable_edc) {
-      edc_ = std::make_unique<EDC>();
+      edc_ = std::make_unique<EDC>(config_.edc_h_max,
+                                   config_.edc_leht_size,
+                                   config_.edc_llr_bits);
     }
     if (config_.enable_tvc) {
-      tvc_ = std::make_unique<TVC>(config_.pim_freq_mhz, config_.npu_freq_mhz);
+      tvc_ = std::make_unique<TVC>(config_.pim_freq_mhz,
+                                   config_.npu_freq_mhz,
+                                   config_.tvc_cycle_table_size);
     }
   }
 
