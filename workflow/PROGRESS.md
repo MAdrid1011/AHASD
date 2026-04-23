@@ -15,43 +15,68 @@
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| Phase A | AHASDFix 纯文字修改（W1/W7/W8/W10） | ⏸ 推迟到 Phase G |
+| Phase A | AHASDFix 纯文字修改（W1/W4/W7/W8/W9/W10） | ✅ 已完成（6 条 weakness 的正文文字全部入库到 AHASPro.md） |
 | Phase B | 仿真器基线诊断 | ✅ 已完成（结论：需从头重建） |
 | **Phase B2** | **仿真器底座重建（多模型调度器 / 协同仿真 / 能量 / 接受模型 / 端到端冒烟）** | ✅ 已完成 |
 | Phase C | 三条基线实现（NPU-only / SpecPIM / GPU-only） | ✅ 已完成（C1/C2/C3） |
-| Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1-D4 infra + pilot 就绪，prod 矩阵待跑 |
-| Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🚧 E1 infra + E2 合成模型完成，prod sweep 待跑 |
-| Phase F | SSRC 真实集成 + Challenge 3 | 🚧 F1 完成（SSRC 真周期耦合 + 物化 KV write + 成功冒烟） |
-| Phase G | AHASPro.md 论文文字全面更新 | 🔲 未开始 |
+| Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1-D4 infra + pilot 就绪，prod 矩阵待长跑（6-12 h） |
+| Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🚧 E1 infra + E2 合成模型完成；prod sweep 受限于 TLM 6.7b cell wall-clock，命令入库待长跑 |
+| Phase F | SSRC 真实集成 + Challenge 3 | ✅ F1 耦合 + F2 LLR sweep + F3 SSRC 评估 pilot 全部完成 |
+| Phase G | AHASPro.md 论文文字全面更新 | 🚧 Phase A 的 6 条 weakness 文字已入 AHASPro.md；剩余 AHASDExtend 结构扩展 + SSRC/Challenge 3 新段落待写 |
 
 ---
 
-## Phase A：纯文字修改（不依赖实验，可立即进行）
+## Phase A：纯文字修改（不依赖实验，全部已入库到 AHASPro.md）
 
 ### A1 — W1 正确性论证
 - **目标**：在 Section 4.1/4.2/4.3 末尾各加 1-2 句正确性声明；Section 4 开头加总括声明
-- **对应 AHASPro.md 位置**：Section 4.1 末、Section 4.2 末、Section 4.3 末、Section 4 开头段
-- **状态**：🔲 未开始
+- **完成情况（2026-04-22）**：
+  - ✅ Section 4 总括（`AHASPro.md:77`）：`**正确性保持说明**。AHASD 严格保持推测解码的无损性不变量……其无损性由 Leviathan 等人的推测解码分布等价性证明直接继承。`
+  - ✅ Section 4.1 末（`AHASPro.md:93`）：`**正确性保持（异步框架）**。AHASD 的异步任务级调度利用三个跨设备队列在 DLM 与 TLM 之间解耦控制流，但 rollback 机制保证所有最终被接受的 token 均经过 NPU 侧完整 TLM 的 rejection sampling 判决……`
+  - ✅ Section 4.2 末（`AHASPro.md:111`）：`**正确性保持（EDC）**。EDC 的判决仅作用于控制路径（是否继续提交下一轮草稿），不修改 NPU 侧 TLM 的 acceptance criterion……`
+  - ✅ Section 4.3 末（`AHASPro.md:145`）：`**正确性保持（TVC）**。TVC 的预验证输出仅作为控制信号用于决定是否继续草稿生成，不进入 token 接受判决的数据路径……`
+- **状态**：✅ 已完成
 
 ### A2 — W7 GTSU 可行性论证
 - **目标**：Section 4.1 GTSU 描述段后新增四条逻辑链（约 0.5 页）
-- **对应 AHASPro.md 位置**：Section 4.1「门控任务调度单元会启用……亚微秒级切换」段落之后
-- **状态**：🔲 未开始
+- **完成情况（2026-04-22）**：
+  - ✅ `AHASPro.md:91` 插入 `**GTSU 硬件可行性论证**` 整段，覆盖四条逻辑链：
+    - (i) rank 选择控制本身是 LPDDR5 标准机制（CS#/CKE，不涉及 die 内部互连重配置）
+    - (ii) 亚微秒级切换由 $t_{RRD\_L}, t_{RCD}, t_{CKELPD}$ 直接保证（50-60 ns << 1 μs），全部映射到 Table 2 已有的 JEDEC 时序参数
+    - (iii) 先例引用：Samsung HBM-PIM (ISSCC'21) / GDDR6-AiM (ISSCC'22) / UPMEM
+    - (iv) 硬件规模：16-bit one-hot + 4 状态机 + 16 根 CS#/CKE 输出 → 28 nm 综合面积 < 0.005 mm²
+- **状态**：✅ 已完成
 
 ### A3 — W8 EDC 表述修正
-- **目标**：将「逐步学习」改为 counter-based update rule 表述；补充 PHT 更新语义
-- **对应 AHASPro.md 位置**：Section 4.2 末段「通过这一过程，系统会逐步学习……」
-- **状态**：🔲 未开始
+- **目标**：将"逐步学习"改为 counter-based update rule 表述；补充 PHT 更新语义
+- **完成情况（2026-04-22）**：
+  - ✅ `AHASPro.md` Section 4.2 末（第 109 行附近）整段替换：
+    - 补充 $k$-bit 饱和计数器的位宽（$k=2$，即 2-bit 饱和计数器）
+    - 补充更新规则：接受 +1（饱和于上限），拒绝 -1（饱和于下限）
+    - 补充预测规则：最高位为 1 预测接受、为 0 预测拒绝
+    - 明确"学习"的含义：类比硬件分支预测器的饱和计数器收敛过程，是确定性的非随机非 oracle
+- **状态**：✅ 已完成
 
 ### A4 — W9 带宽域说明（文字部分）
 - **目标**：TVC 段末补充 PIM 片内带宽 vs NPU 外部总线互补的 1-2 句说明
-- **对应 AHASPro.md 位置**：Section 4.3 预验证插入逻辑（「PIM 可用于预验证的剩余周期」）之后
-- **状态**：🔲 未开始
+- **完成情况（2026-04-22）**：
+  - ✅ `AHASPro.md:143` 插入 `**带宽域互补说明**`：指出 TVC 预验证主要使用 PIM 256 GB/s 片内通路、不挤占 NPU 51.2 GB/s off-chip 带宽，并点出 NVCT/PDCT/PVCT 已内生地对"预验证挤占 NPU 关键路径"进行建模、allowed pre-verify length < 1 时 TVC 自动跳过
+- **状态**：✅ 已完成（W9 图表部分 overlap_timeline.json 已由 D4 产出）
 
 ### A5 — W10 双仿真器对齐机制描述
 - **目标**：Section 5.1 两个插入点扩写，约增加 150 字
-- **对应 AHASPro.md 位置**：Section 5.1「我们修改了 ONNXim 的内存接口……」前后
-- **状态**：🔲 未开始
+- **完成情况（2026-04-22）**：
+  - ✅ `AHASPro.md:161` Section 5.1 "实验平台" 段整段扩写，落实 rebuttal R1 的三层对齐机制：
+    - **周期级时序对齐**：全局共享事件队列 + 频率感知 cycle 换算（$cycle_{PIM} = \lfloor cycle_{NPU} \times f_{PIM}/f_{NPU} \rfloor$，NPU 1 GHz / PIM 800 MHz）
+    - **事件驱动请求/响应对齐**：三个异步 FIFO（未验证/反馈/预验证）的互斥锁保护生产者-消费者机制
+    - **数据级语义对齐**：请求消息（op/type, addr/size, issue_cycle）与响应消息（completion_cycle, status）的结构化元数据，以及 ONNXim 必须等待响应后方可推进
+- **状态**：✅ 已完成
+
+### A6 — Challenge 1 定量 idle 数字（W4 的 motivation 补充，顺手入库）
+- **目标**：Section 3 Challenge 1 末尾（Fig. 3 之后）加入 80.5% / 85.4% idle 数字
+- **完成情况（2026-04-22）**：
+  - ✅ `AHASPro.md:57` Fig. 3 后追加 2-3 句：`从 cycle-accurate trace 中可以进一步观察到……PIM 主导时 NPU 平均空闲约占迭代总时间的 80.5%；……NPU 主导时 PIM 平均空闲约占迭代总时间的 85.4%。这一严重的相互等待开销表明……仅靠静态任务划分无法消除自适应推测解码的负载失衡。`
+- **状态**：✅ 已完成
 
 ---
 
@@ -447,7 +472,7 @@
   python3 scripts/run_matrix.py \
     --model-pairs opt-1.3b:opt-6.7b,llama2-7b:llama2-13b,palm-8b:palm-30b \
     --algorithms npu_only,specpim,gpu_only,ahasd_full \
-    --workload-trace workloads/d2_prod_<TBD>.csv \
+    --workload-trace workloads/prod_p32_g128_2req.csv \
     --max-draft-length 4 \
     --output-dir workflow/runs/d2_prod \
     --cell-timeout-s 7200
@@ -575,13 +600,50 @@
 ### F2 — Challenge 3 量化实验（LLR vs 物化字节/拒绝比例）
 - **目标**：LLR（0-7）vs 物化状态字节数（MB）+ 拒绝比例（%）双 Y 轴折线图
 - **依赖**：F1 ✅ ；EDC LLR sweep 基础设施（E1）
-- **状态**：🔲 未开始
+- **状态**：✅ 已完成（2026-04-22）
+- **实现**：
+  - 新脚本 `scripts/run_ssrc_sweep.py` 驱动 threshold sweep，复用 `run_baseline.py` + SSRC 专用 log 正则
+  - 输出矩阵：`workflow/runs/f2_llr_sweep_opt125m/ssrc_sweep.csv`（8 档 threshold 2.0..9.0）
+  - 报告：`workflow/runs/f2_llr_sweep_opt125m/README.md`
+- **关键数据**（opt-125m × opt-125m-t / p4g8/2req）：
 
-### F3 — SSRC 完整评估矩阵（3×4×threshold sweep）
-- **配置**：3 模型对 × 4 算法 × threshold sweep `{4.0, 5.0, 6.0, 7.0}`（配合当前 parametric acceptance 模式的 entropy hint 分布）
-- **指标**：吞吐量、能效、`bypass_writes` / `replay bytes` / `peak resident bytes`
+  | thr | deferred | bypass_bytes | rejection_rate | energy_mJ |
+  |----:|---------:|-------------:|---------------:|----------:|
+  | 2.0 | 21       | 208 896      | 0.571          | 149.9449  |
+  | 4.0 | 15       | 135 168      | 0.542          | 149.7606  |
+  | 5.0 |  7       |  43 008      | 0.500          | 149.5302  |
+  | 6.0 |  1       |   3 072      | 0.000          | 149.4303  |
+  | 7.0+|  0       |       0      | —              | 149.4226  |
+
+  - 物化字节数单调随 threshold 降低而升高（符合预期：更激进的 defer）
+  - 拒绝比例随 threshold 降低而升高（threshold=2.0 时 57% 被拒，threshold=5.0 时 50%）
+  - 能量反向（过低 threshold 下 staging + replay 开销使能耗轻微上升）
+  - 当前 tiny workload 下 cycles 几乎不变——SSRC ROI 期望随 workload 扩大后转为 cycle savings
+
+### F3 — SSRC 完整评估矩阵（4 算法 × 4 threshold pilot）
+- **配置**：4 算法（`ahasd_ssrc_none` / `_aau` / `_edc` / `_full`）× 4 threshold `{4.0, 5.0, 6.0, 7.0}`
+- **指标**：吞吐量、能效、`bypass_writes` / `replay bytes` / `peak resident bytes`、AAU/GTSU/SSRC 计数器
 - **依赖**：F1 ✅
-- **状态**：🔲 未开始
+- **状态**：✅ pilot 已完成（2026-04-22）；prod 受限于 TLM 6.7b wall-clock，launch 命令入库
+- **产物**：
+  - 新 config overlays：`configs/baselines/ahasd_ssrc_{none,aau,edc,full}.json`
+  - 结果矩阵：`workflow/runs/f3_pilot_opt125m/ssrc_sweep.csv`（16 cells）
+  - 报告：`workflow/runs/f3_pilot_opt125m/README.md`
+- **关键观察**：
+  - **SSRC 与 AAU/EDC/TVC 正交**：SSRC 计数器（decisions/deferred/commit/discard/partial/bypass_*）在 4 个算法行之间**完全一致**（entropy hint + threshold 的函数，不依赖算法开关）。这允许 §5.6 图里把 SSRC 行作为"每个模型对一条曲线"而无需交叉展开。
+  - **堆叠不破坏既有 ROI**：threshold=5.0 时 `_none → _aau/_edc/_full` 的能量差为 `153.635 → 149.530 mJ`（AAU 贡献 2.7% saving，与 D1 ablation 一致）；cycles 在 0.05% drift 带内。
+  - **Tiny workload 限制**：EDC/TVC 在 21 轮草稿下无统计显著差异；需 prod workload 拉到 >100 轮草稿以观察 EDC PHT 饱和与 TVC 预验证 fire
+- **Prod 矩阵命令（pending long wall-clock 跑一次）**：
+  ```
+  scripts/run_ssrc_sweep.py \
+    --out workflow/runs/f3_prod_opt13b \
+    --model-pair opt-1.3b:opt-6.7b \
+    --workload-trace workloads/prod_p32_g128_2req.csv \
+    --thresholds 4.0,5.0,6.0,7.0 \
+    --baselines ahasd_ssrc_none,ahasd_ssrc_aau,ahasd_ssrc_edc,ahasd_ssrc_full \
+    --max-draft-length 4 --timeout-s 7200
+  ```
+  - 预估：单 cell opt-1.3b:opt-6.7b/p16g32/1req ≈ 15 min；16 cells ≈ 4 h
 
 ---
 
@@ -619,3 +681,8 @@
 | 2026-04-22 | D4 完成：新增 `scripts/parse_overlap.py` 纯日志解析器（逐窗口配对 Core [0] NPU 活动与 HBM CH_0 带宽，四桶分类 compute_only/memory_only/overlap/idle）；`run_matrix.py` 每 cell emit `overlap_timeline.json` + 矩阵级 `overlap_summary_matrix.json`；opt-125m × 4 轴 pilot 显 **overlap% 随 AHASD 单调扩张 14.45 → 16.12 → 16.82 (+2.37 pct)**，直接支撑 W9 域互补论点；Phase D infra 全部就绪，prod 大 workload 待跑 |
 | 2026-04-22 | E1 (W2 sensitivity) infra 完成：`EDC`/`TVC`/`AHASDConfig`/`SimulationConfig`/`Common.cc`/`Simulator.cc` 把 4 个硬编码常量改成 runtime-configurable（默认值保持 DAC 设计点→零配置 bit-equivalent 回归）；`run_baseline.py` 新增 `--config-override KEY=JSON`；新脚本 `scripts/run_sensitivity.py` 驱动 4 轴 × 3-4 值 = 15 cell sweep；opt-125m pilot 15 格指标完全相同（PHT 未被压制到 NOT_TAKEN、TVC 决策次数仅 17 次）→ 基础设施正确但 workload 规模需 prod opt-1.3b/llama2 才能显曲线，与 C1.5/D1 pilot 定论一致（issue #29） |
 | 2026-04-22 | E2 (W6/W11 synthesis) 完成：新增参数化硬件成本模型 `scripts/hardware_cost_model.py`（28nm-LP + CACTI/NAND2/FF 系数明写 + Samsung HBM-PIM / AttAcc / GDDR6-AiM 作为 anchor），驱动脚本 `scripts/run_synthesis_sweep.py` 产出 `workflow/runs/e2/{w6_dac_baseline,w6_w11_optimized,w6_comparison,e1_axis_sweep}.md` + JSON 快照；DAC baseline = 1.2517 mm² / 2.50% die / 25.12 mW，W11 优化档（INT8 AAU + 归约树/控制时分复用）= 0.7087 mm² / 1.42% die / 15.58 mW（−43% 面积 / −38% 功耗），同时满足 <3% 与 ≤2% 两条 claim；`validate_hardware_costs.py` 瘦身为库消费者 + claim assertion；`docs/HardwareComponents.md` 总览表 + AAU Hardware Cost 小节全量刷新，DAC/W11 两档并列展示 |
+| 2026-04-22 | F1 SSRC 真实周期耦合完成：新增 `ONNXim/src/SSRC.{h,cc}` `SSRCCoordinator`（deferral decision / resident-byte budget / commit-discard-partial 三分），`PIMBackend::try_ssrc_bypass` 在 ICNT→memory 边界把 attention-class tagged writes 按 `_ssrc->is_active_request(lang_request_id)` 拦截，`_pim_ssrc_bypass_queues` 模拟 10 ns 固定延迟；关键 bug fix：① `MemoryAccess.request_id` 实际携带 `LangRequest.request_id` 而非 `Model::get_id()`，SSRC 改为以 `lang_request_id` 作 key；② `KVCacheConcat::initialize_tiles` 之前硬编码 `skip=true` 导致 KV write 永不进入 ICNT，现改为 `skip = !_config.ssrc_enable` 以保持 `ahasd_full` bit-identical 回归；smoke 验证 `[SSRC] decisions=21 deferred=21 commit=5 discard=10 partial=6 replayed=6144B bypass_writes=1344` |
+| 2026-04-22 | F2 Challenge 3 LLR sweep 完成：新增 `scripts/run_ssrc_sweep.py` 驱动（复用 `run_baseline.py` + SSRC 专用 log 正则 13 条），8 档 threshold 2.0..9.0 sweep 输出 `workflow/runs/f2_llr_sweep_opt125m/ssrc_sweep.csv` + README；得到单调的物化字节数曲线（208KB @ thr=2.0 → 0 @ thr=7.0）、单调的拒绝比例（57% @ thr=2.0 → 0 @ thr=6.0）、反向的能量曲线（staging+replay overhead 在低阈值下 +0.52 mJ），直接供 §5.6 双 Y 轴折线图使用 |
+| 2026-04-22 | F3 SSRC 评估 4×4 pilot 完成：新增 4 条 SSRC ablation overlay `configs/baselines/ahasd_ssrc_{none,aau,edc,full}.json`，16-cell pilot 确认**SSRC 与 AAU/EDC/TVC 正交**（SSRC 计数器在 4 个算法行间完全一致）+ **AAU/EDC/TVC 堆叠不破坏 SSRC ROI**（threshold=5.0 时 `_none → _aau/_edc/_full` 能量差与 D1 progressive ablation 吻合）；prod 矩阵命令入库待长跑 |
+| 2026-04-22 | Phase A（AHASPro.md 文字修改 W1/W4/W7/W8/W9/W10）全部入库：Section 4 前置正确性总括、§4.1/4.2/4.3 各末尾正确性保持小段、§4.1 GTSU 硬件可行性论证（四条逻辑链）、§4.2 EDC 2-bit 饱和计数器更新规则（替换"逐步学习"）、§4.3 带宽域互补说明、§5.1 双仿真器三层对齐机制（周期/事件/数据）、§3 Challenge 1 末加入 80.5%/85.4% idle 定量数字。所有 6 个编辑位点用 grep 逐一验证入库 |
+| 2026-04-22 | D/E prod 矩阵 timing-probe：实测 opt-1.3b×opt-6.7b / p16g32/1req 单 cell spec-decode 在本机 >15 min；opt-125m×opt-1.3b 同 workload 7 min 超时；结论：D1 prod (3 pairs × 4 algos = 12 cells) / D2 prod (3 pairs × 4 cols = 12 cells) / E1 prod (15 cells @ 1.3b:6.7b) 的墙钟预算应规划 6-24 h；launch 命令统一入库到各自 `runs/*/README.md` 或 `PROGRESS.md`，留待独立后台长跑 |
