@@ -22,7 +22,7 @@
 | Phase D | DAC 版实验数据产出（5.2 / 5.3 / W3 / W9） | 🚧 D1-D4 infra + pilot 就绪，prod 矩阵待长跑（6-12 h） |
 | Phase E | 敏感性 + 硬件综合（W2 / W6 / W11） | 🚧 E1 infra + E2 合成模型完成；prod sweep 受限于 TLM 6.7b cell wall-clock，命令入库待长跑 |
 | Phase F | SSRC 真实集成 + Challenge 3 | ✅ F1 耦合 + F2 LLR sweep + F3 SSRC 评估 pilot 全部完成 |
-| Phase G | AHASPro.md 论文文字全面更新 | 🚧 Phase A 的 6 条 weakness 文字已入 AHASPro.md；剩余 AHASDExtend 结构扩展 + SSRC/Challenge 3 新段落待写 |
+| Phase G | AHASPro.md 论文文字全面更新 | 🚧 G1 结构重组 + SSRC/Challenge 3 新段落已入库（§1/§2/§3/§4/§6 全部更新）；§5 各表与具体数字待 prod 数据出来后更新 |
 
 ---
 
@@ -686,3 +686,5 @@
 | 2026-04-22 | F3 SSRC 评估 4×4 pilot 完成：新增 4 条 SSRC ablation overlay `configs/baselines/ahasd_ssrc_{none,aau,edc,full}.json`，16-cell pilot 确认**SSRC 与 AAU/EDC/TVC 正交**（SSRC 计数器在 4 个算法行间完全一致）+ **AAU/EDC/TVC 堆叠不破坏 SSRC ROI**（threshold=5.0 时 `_none → _aau/_edc/_full` 能量差与 D1 progressive ablation 吻合）；prod 矩阵命令入库待长跑 |
 | 2026-04-22 | Phase A（AHASPro.md 文字修改 W1/W4/W7/W8/W9/W10）全部入库：Section 4 前置正确性总括、§4.1/4.2/4.3 各末尾正确性保持小段、§4.1 GTSU 硬件可行性论证（四条逻辑链）、§4.2 EDC 2-bit 饱和计数器更新规则（替换"逐步学习"）、§4.3 带宽域互补说明、§5.1 双仿真器三层对齐机制（周期/事件/数据）、§3 Challenge 1 末加入 80.5%/85.4% idle 定量数字。所有 6 个编辑位点用 grep 逐一验证入库 |
 | 2026-04-22 | D/E prod 矩阵 timing-probe：实测 opt-1.3b×opt-6.7b / p16g32/1req 单 cell spec-decode 在本机 >15 min；opt-125m×opt-1.3b 同 workload 7 min 超时；结论：D1 prod (3 pairs × 4 algos = 12 cells) / D2 prod (3 pairs × 4 cols = 12 cells) / E1 prod (15 cells @ 1.3b:6.7b) 的墙钟预算应规划 6-24 h；launch 命令统一入库到各自 `runs/*/README.md` 或 `PROGRESS.md`，留待独立后台长跑 |
+| 2026-04-23 | Phase G1（AHASPro.md 结构重组 + SSRC/Challenge 3 文字入库）完成：①§1 摘要与 §1 引言贡献列表从 "async+EDC+TVC+eval" 改写为 "async+ADPC+SSRC+eval" 四条平行贡献；②§2 背景末新增 "异步推测解码中的投机状态生命周期" 子节（约 4 句）；③§3 动机导言由 "两个关键挑战" 扩展为 "三个递进相关挑战"，并在 §3 末追加 **挑战 3：投机状态驻留压力** 与 **机会 3：驻留感知控制** 两节，挑战 3 含对应 LLR × 物化字节 / 拒绝比例的双 Y 轴图占位（`**图\,X**`）；④§4 将原 §4.2 EDC + §4.3 TVC 合并为 §4.2 ADPC 三子节（§4.2.1 EDC / §4.2.2 TVC / §4.2.3 ADPC 正确性分析），并新增 §4.3 SSRC 完整设计（架构地位 + 四类输入信号 + 四种驻留操作 + 三个队列事件 + 正确性段）；⑤§4 开头 "三项关键机制" 叙事与 §6 结论全面重写为三挑战/三设计口径；⑥全文保持 Phase A 的学术风格约束（无加粗小标题、英文术语仅首次出现括注、减少破折号）。§5 各表与具体 speedup 数字待 D1/D2/E1/F3 prod 矩阵完成后再更新 |
+| 2026-04-23 | probe_prod_opt13b 后台启动：opt-1.3b × opt-6.7b × 4 算法 (`npu_only/specpim/gpu_only/ahasd_full`) @ `workloads/minibench_p16_g32_1req.csv`，cell-timeout 2400s，作为 "minimal viable prod" 验证 speedup 在 1.3b/6.7b 规模下的走向；墙钟预期 ~1 h，日志 `/tmp/probe_prod.log`，结果落 `workflow/runs/probe_prod_opt13b/` |
