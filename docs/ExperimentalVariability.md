@@ -34,7 +34,7 @@ Based on our extensive testing, experimental results typically exhibit the follo
 # Always use consistent initialization
 export ONNXIM_SEED=42
 export PIM_SIM_SEED=42
-./scripts/run_ahasd_simulation.sh --seed 42
+./tools/dev/run_ahasd_simulation.sh --seed 42
 ```
 
 ### 2. Input Prompt Selection
@@ -83,7 +83,7 @@ CONFIG="llama2-7b-llama2-13b_adaedl"
 for seed in "${SEEDS[@]}"; do
     echo "Running with seed=$seed"
     
-    python3 scripts/run_single_config.py \
+    python3 tools/dev/run_single_config.py \
         --model llama2-7b-llama2-13b \
         --algorithm adaedl \
         --enable-edc --enable-tvc --enable-aau \

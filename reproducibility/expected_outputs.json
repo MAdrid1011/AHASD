@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "outputs": [
+    {
+      "name": "challenge_stall_ratio.csv",
+      "columns": ["model", "algorithm", "NPU Stall Ratio", "PIM Stall Ratio"],
+      "description": "Device stall ratios under adaptive drafting."
+    },
+    {
+      "name": "challenge_iteration_latency_trace.csv",
+      "columns": ["iteration", "NPU Latency Ratio", "PIM Latency Ratio", "Draft Length"],
+      "description": "Per-iteration latency split and speculative-window pressure."
+    },
+    {
+      "name": "lookahead_acceptance_compare.csv",
+      "columns": ["model", "algorithm", "GPU Serial", "AMUSD Async"],
+      "description": "Serial and asynchronous look-ahead candidate acceptability."
+    },
+    {
+      "name": "lookahead_decomposition_ratio.csv",
+      "columns": ["leading_batch", "observation", "batch1", "batch2", "batch3", "batch4", "batch5", "batch6", "cumulative_draft", "acceptable_ratio"],
+      "description": "Look-ahead draft decomposition by leading batch."
+    },
+    {
+      "name": "draft_active_utilization_timeline.csv",
+      "columns": ["time", "npu_util", "pim_util", "pim_active"],
+      "description": "NPU/PIM utilization timeline across draft-inactive and draft-active windows."
+    },
+    {
+      "name": "draft_active_tlm_blocking.csv",
+      "columns": ["model", "algorithm", "inactive_blocking", "active_blocking"],
+      "description": "TLM read issue blocking in draft-inactive and draft-active windows."
+    },
+    {
+      "name": "performance_throughput.csv",
+      "columns": ["group", "major_group", "minor_group", "label", "Norm. Throughput"],
+      "description": "Normalized throughput across baseline systems."
+    },
+    {
+      "name": "performance_energy_efficiency.csv",
+      "columns": ["group", "major_group", "minor_group", "label", "Norm. EE"],
+      "description": "Normalized energy efficiency across baseline systems."
+    },
+    {
+      "name": "effective_utilization.csv",
+      "columns": ["group", "major_group", "minor_group", "bar", "bar_group", "segment", "Effective Util. (%)"],
+      "description": "NPU/PIM effective utilization for asynchronous baselines."
+    },
+    {
+      "name": "pim_command_issue.csv",
+      "columns": ["group", "major_group", "minor_group", "bar", "segment", "PIM Command Issue (%)"],
+      "description": "PIM command issue rate for asynchronous baselines."
+    },
+    {
+      "name": "ablation_throughput.csv",
+      "columns": ["group", "major_group", "minor_group", "label", "Norm. Throughput"],
+      "description": "Normalized throughput across AHASD ablations."
+    },
+    {
+      "name": "ablation_acceptance.csv",
+      "columns": ["group", "major_group", "minor_group", "label", "Acceptable Ratio (%) (Acceptable Ratio)"],
+      "description": "Candidate acceptability across AHASD ablations."
+    },
+    {
+      "name": "hardware_overhead.csv",
+      "columns": ["Module", "Area", "Dyn.", "Stat."],
+      "description": "AHASD hardware overhead model."
+    },
+    {
+      "name": "sensitivity_hmax_specdec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for HMAX with SpecDec++."
+    },
+    {
+      "name": "sensitivity_hmax_svip.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for HMAX with SVIP."
+    },
+    {
+      "name": "sensitivity_hmax_adaedl.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for HMAX with AdaEDL."
+    },
+    {
+      "name": "sensitivity_hmax_banditspec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for HMAX with BanditSpec."
+    },
+    {
+      "name": "sensitivity_leht_specdec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LEHT with SpecDec++."
+    },
+    {
+      "name": "sensitivity_leht_svip.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LEHT with SVIP."
+    },
+    {
+      "name": "sensitivity_leht_adaedl.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LEHT with AdaEDL."
+    },
+    {
+      "name": "sensitivity_leht_banditspec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LEHT with BanditSpec."
+    },
+    {
+      "name": "sensitivity_llr_specdec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LLR with SpecDec++."
+    },
+    {
+      "name": "sensitivity_llr_svip.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LLR with SVIP."
+    },
+    {
+      "name": "sensitivity_llr_adaedl.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LLR with AdaEDL."
+    },
+    {
+      "name": "sensitivity_llr_banditspec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "Acceptable Ratio (%)"],
+      "description": "Sensitivity sweep for LLR with BanditSpec."
+    },
+    {
+      "name": "sensitivity_tvc_specdec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "NPU Idle Ratio (%)"],
+      "description": "Sensitivity sweep for TVC with SpecDec++."
+    },
+    {
+      "name": "sensitivity_tvc_svip.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "NPU Idle Ratio (%)"],
+      "description": "Sensitivity sweep for TVC with SVIP."
+    },
+    {
+      "name": "sensitivity_tvc_adaedl.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "NPU Idle Ratio (%)"],
+      "description": "Sensitivity sweep for TVC with AdaEDL."
+    },
+    {
+      "name": "sensitivity_tvc_banditspec.csv",
+      "columns": ["group", "x", "Throughput (tok/s)", "NPU Idle Ratio (%)"],
+      "description": "Sensitivity sweep for TVC with BanditSpec."
+    }
+  ]
+}

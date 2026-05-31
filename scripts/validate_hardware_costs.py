@@ -23,7 +23,6 @@ from hardware_cost_model import (  # noqa: E402
     compute_breakdown,
     dac_baseline_profile,
     w11_optimized_profile,
-    MODULE_ORDER,
 )
 
 
@@ -38,7 +37,8 @@ def _print_breakdown(label: str, breakdown: dict) -> None:
         f"{'Dyn (mW)':>12}{'Static (mW)':>14}{'Total (mW)':>14}"
     )
     print("-" * 70)
-    for m in MODULE_ORDER:
+    module_order = breakdown.get("module_order") or list(per_module)
+    for m in module_order:
         v = per_module[m]
         total_mw = v["dyn_mw"] + v["static_mw"]
         print(

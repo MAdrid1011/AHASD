@@ -34,6 +34,7 @@ struct LangInput {
   uint32_t request_id;
   uint32_t seq_length;
   uint32_t context_length;
+  uint32_t spec_task_type = SPEC_TASK_NONE;
   std::vector<Tensor*> key_cache;
   std::vector<Tensor*> value_cache;
 };
@@ -88,6 +89,7 @@ class LanguageModel : public Model {
     std::vector<std::vector<uint32_t>> _value_cache_tensor_ids;
    
     void register_operation(std::unique_ptr<Operation>);
+    void annotate_spec_task_type();
     std::unique_ptr<Tensor> create_tensor(std::string name,
                                         std::vector<uint32_t> dims);
     std::unique_ptr<Tensor> create_weight(std::string name,

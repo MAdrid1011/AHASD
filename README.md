@@ -16,22 +16,22 @@ Research implementation of **AHASD: Asynchronous Heterogeneous Architecture for 
 - **TVC (Time-Aware Pre-Verification)**: Dynamic pre-verification based on runtime modeling
 - **AAU (Attention Algorithm Unit)**: In-memory nonlinear operations
 - **Sub-μs Task Switching**: Fast drafting/verification switching
-- **Minimal Overhead**: 2.5% of DRAM die area
+- **Small Hardware Cost**: 0.901 mm² total area with 12.10 mW dynamic and 3.838 mW static power
 
 ---
 
 ## 🏗️ Architecture
 
-AHASD integrates three platforms:
+AHASD integrates simulator-backed accelerator models with a replayable host control plane:
 
 - **ONNXim**: NPU simulator for TLM verification
 - **PIMSimulator**: LPDDR5-PIM for DLM drafting  
-- **XiangShan**: RISC-V CPU for control logic (EDC/TVC)
+- **Control-plane replay**: EDC/TVC and scheduling decisions driven by traced model and workload inputs
 
 ```
 ┌──────────┐       ┌──────────┐       ┌──────────┐
-│   NPU    │◄─────►│   CPU    │◄─────►│   PIM    │
-│  (TLM)   │       │ (Control)│       │  (DLM)   │
+│   NPU    │◄─────►│   Host   │◄─────►│   PIM    │
+│  (TLM)   │       │ Control  │       │  (DLM)   │
 └──────────┘       └──────────┘       └──────────┘
      ▲                   │                   ▲
      │              ┌────┴────┐              │
@@ -52,10 +52,10 @@ AHASD integrates three platforms:
 
 | Component | Area | % DRAM |
 |-----------|------|--------|
-| EDC + TVC | 0.0004 mm² | <0.1% |
-| AAU | 0.45 mm² | 2.5% |
-| Queues + Scheduler | 0.001 mm² | <0.1% |
-| **Total** | **0.45 mm²** | **2.5%** |
+| EDC + TVC + VSKM | 0.000413 mm² | <0.1% |
+| AAU + DDBC | 0.900587 mm² | design overhead |
+| Queues + Scheduler | included above | design overhead |
+| **Total** | **0.901 mm²** | **12.10 mW dyn / 3.838 mW stat** |
 
 ---
 
@@ -68,28 +68,24 @@ AHASD integrates three platforms:
 # Build ONNXim (requires Conan 1.x: pip3 install "conan<2")
 cd ONNXim && ./scripts/build_onnxim.sh
 
-# Build PIMSimulator  
+# Build PIMSimulator
 cd ../../PIMSimulator && scons -j8
 ```
 
-### Run Demo
+### Reproduce Paper Data
 
 ```bash
-python3 scripts/run_single_config.py \
-  --model llama2-7b-llama2-13b \
-  --algorithm adaedl \
-  --enable-edc --enable-tvc --enable-aau \
-  --output ./results/demo
-
-# View results
-cat results/demo/metrics.txt
+python3 scripts/reproduce_paper_data.py \
+  --execution-mode fast-replay \
+  --output-dir reproducibility/generated \
+  --timeout-s 900
 ```
 
 ### Validate Hardware
 
 ```bash
 python3 scripts/validate_hardware_costs.py
-# Expected: ✓ Overhead = 2.5% < 3%
+# The canonical hardware table is emitted by scripts/hardware_cost_model.py.
 ```
 
 ---
@@ -102,8 +98,7 @@ AHASD/
 │   └── src/async_queue/        # EDC, TVC, queues
 ├── PIMSimulator/               # PIM simulator
 │   └── src/                    # AAU, scheduler
-├── XiangShan/                  # RISC-V CPU
-│   └── src/main/scala/         # Control modules
+├── reproducibility/            # Public reproduction entrypoint and manifest
 ├── scripts/                    # Experiments
 ├── configs/                    # Configurations
 ├── docs/                       # Documentation
@@ -136,7 +131,7 @@ AHASD/
 ### Hardware
 **NPU**: 128×128 systolic, 16 TFLOPS @ 1GHz  
 **PIM**: 16 ranks LPDDR5, 102.4 GOPS INT8  
-**CPU**: XiangShan RISC-V for control
+**Host Control**: replayed EDC/TVC and scheduler decisions from model, workload, and simulator counters
 
 ---
 
@@ -167,7 +162,6 @@ We welcome contributions! See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 Built upon:
 - [ONNXim](https://github.com/PSAL-POSTECH/ONNXim) - NPU simulation
 - [PIMSimulator](https://github.com/SAITPublic/PIMSimulator) - PIM simulation
-- [XiangShan](https://github.com/OpenXiangShan/XiangShan) - RISC-V processor
 
 ---
 

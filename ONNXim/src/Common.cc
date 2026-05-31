@@ -142,6 +142,10 @@ SimulationConfig initialize_config(json config) {
     parsed_config.enable_tvc = config["enable_tvc"];
   if (config.contains("enable_aau"))
     parsed_config.enable_aau = config["enable_aau"];
+  if (config.contains("enable_pim_cmd_sched"))
+    parsed_config.enable_pim_cmd_sched = config["enable_pim_cmd_sched"];
+  if (config.contains("pim_cmd_issue_queue_entries"))
+    parsed_config.pim_cmd_issue_queue_entries = config["pim_cmd_issue_queue_entries"];
   if (config.contains("max_draft_length"))
     parsed_config.max_draft_length = config["max_draft_length"];
   /* E1 — W2 sensitivity-sweep hyperparameters (all optional; omitting a
@@ -155,6 +159,20 @@ SimulationConfig initialize_config(json config) {
     parsed_config.edc_llr_bits = config["edc_llr_bits"];
   if (config.contains("tvc_cycle_table_size"))
     parsed_config.tvc_cycle_table_size = config["tvc_cycle_table_size"];
+  if (config.contains("enable_vskm"))
+    parsed_config.enable_vskm = config["enable_vskm"];
+  if (config.contains("kv_management_mode"))
+    parsed_config.kv_management_mode = config["kv_management_mode"].get<std::string>();
+  if (config.contains("vskm_version_entries"))
+    parsed_config.vskm_version_entries = config["vskm_version_entries"];
+  if (config.contains("vskm_region_entries"))
+    parsed_config.vskm_region_entries = config["vskm_region_entries"];
+  if (config.contains("vskm_block_tokens"))
+    parsed_config.vskm_block_tokens = config["vskm_block_tokens"];
+  if (config.contains("vskm_enable_lazy_rollback"))
+    parsed_config.vskm_enable_lazy_rollback = config["vskm_enable_lazy_rollback"];
+  if (config.contains("vskm_virtual_uncommitted_batches"))
+    parsed_config.vskm_virtual_uncommitted_batches = config["vskm_virtual_uncommitted_batches"];
   // B2.3 — SSRC config keys (enable_ssrc, enable_ssrc_proxy, enable_ssrc_trace,
   // ssrc_state_bytes_per_token, ssrc_resident_limit_bytes,
   // ssrc_confidence_threshold) were removed when the sidecar was deleted.
@@ -178,6 +196,18 @@ SimulationConfig initialize_config(json config) {
     parsed_config.pim_gtsu_switch_ns = config["pim_gtsu_switch_ns"];
   if (config.contains("pim_aau_bypass_ns"))
     parsed_config.pim_aau_bypass_ns = config["pim_aau_bypass_ns"];
+
+  /* F1 — SSRC (all optional; absent keys = SSRC OFF, bit-identical behaviour). */
+  if (config.contains("ssrc_enable"))
+    parsed_config.ssrc_enable = config["ssrc_enable"];
+  if (config.contains("ssrc_confidence_threshold"))
+    parsed_config.ssrc_confidence_threshold = config["ssrc_confidence_threshold"];
+  if (config.contains("ssrc_state_bytes_per_token"))
+    parsed_config.ssrc_state_bytes_per_token = config["ssrc_state_bytes_per_token"];
+  if (config.contains("ssrc_resident_limit_bytes"))
+    parsed_config.ssrc_resident_limit_bytes = config["ssrc_resident_limit_bytes"];
+  if (config.contains("ssrc_bypass_ns"))
+    parsed_config.ssrc_bypass_ns = config["ssrc_bypass_ns"];
 
   /* B2.4 — energy model coefficients (LUT, per pJ). All optional. */
   if (config.contains("energy_npu_active_pj_per_cycle"))

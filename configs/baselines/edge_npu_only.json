@@ -1,0 +1,17 @@
+{
+  "_doc": "Edge-envelope NPU-only baseline aligned with AHASPro.md Table 3 (Mobile NPU + LPDDR5). The fast replay path uses the documented 16 TOPS matrix unit, 8.2 TOPS vector unit, and two compute chips to model the dedicated NPU service path; ONNXim still uses the committed c4_128x128 topology as the executable proxy. The memory subsystem remains one 800 MHz 32 B DDR channel, i.e. 51.2 GB/s, matching Table 3. PIM is disabled so DLM and TLM share the same LPDDR5 proxy.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "platform_kind": "mobile_npu",
+  "npu_matrix_tops": 16.0,
+  "npu_vector_tops": 8.2,
+  "npu_compute_chips": 2,
+  "enable_ahasd": false,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "max_draft_length": 4,
+  "pim_enable": false,
+  "pim_enable_aau_fusion": false,
+  "dram_channels": 1,
+  "dram_freq": 800
+}

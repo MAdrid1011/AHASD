@@ -1,0 +1,21 @@
+{
+  "_doc": "F3 step 3 — SSRC + AAU + EDC (no TVC). EDC's confidence signals directly feed the entropy hint that SSRC uses for defer decisions, so this axis tests whether EDC-driven suppression is actually additive on top of SSRC deferral or whether the two compete (both target the same low-confidence draft rounds).",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "enable_ahasd": true,
+  "enable_edc": true,
+  "enable_tvc": false,
+  "enable_aau": true,
+  "max_draft_length": 4,
+  "pim_enable": true,
+  "pim_channel_mask": "",
+  "pim_channel_stride": 2,
+  "pim_clock_mhz": 800,
+  "pim_enable_aau_fusion": true,
+  "pim_aau_fusion_ratio": 0.75,
+  "pim_gtsu_switch_ns": 55,
+  "ssrc_enable": true,
+  "ssrc_confidence_threshold": 5.0,
+  "ssrc_state_bytes_per_token": 128,
+  "ssrc_resident_limit_bytes": 4194304,
+  "ssrc_bypass_ns": 10
+}

@@ -99,38 +99,13 @@ This document lists all files added/modified to implement the AHASD paper experi
 
 ---
 
-### XiangShan Integration (CPU Side)
+### Control-Plane Replay
 
-#### 1. AHASD Control Module
-- **File**: `XiangShan/src/main/scala/xiangshan/ahasd/AHASDControl.scala`
-- **Lines**: 252 lines of Chisel HDL
-- **Function**: CPU-side control logic for EDC/TVC
-- **Components**:
-  - EDC polling logic
-  - TVC polling logic
-  - Queue management
-  - Interrupt handling
-  - Configuration registers
-- **Memory Map**: Base address 0x2000_0000
-
-#### 2. AHASD Scheduler
-- **File**: `XiangShan/src/main/scala/xiangshan/ahasd/AHASDScheduler.scala`
-- **Lines**: 243 lines of Chisel HDL
-- **Function**: Task scheduling and dispatching
-- **Features**:
-  - Task queue management
-  - EDC-based draft suppression
-  - TVC-based pre-verification insertion
-  - PIM/NPU task dispatching
-
-#### 3. Configuration File
-- **File**: `XiangShan/ahasd_control_config.txt`
-- **Function**: Configuration parameters for AHASD control
-- **Parameters**:
-  - EDC polling interval: 100 CPU cycles
-  - TVC polling interval: 50 CPU cycles
-  - Queue polling interval: 20 CPU cycles
-  - Overflow threshold: 56 entries
+The public reproduction path models EDC/TVC and scheduling decisions through
+`scripts/run_etcc_trace_replay.py` and the semantic generator in
+`scripts/reproduce_paper_data.py`. Its inputs are the model JSON files,
+baseline configuration JSON files, and workload traces committed in this
+repository.
 
 ---
 
@@ -155,27 +130,27 @@ This document lists all files added/modified to implement the AHASD paper experi
 ## 🧪 Experiment Scripts
 
 ### Main Simulation Script
-- **File**: `scripts/run_ahasd_simulation.sh`
+- **File**: `tools/dev/run_ahasd_simulation.sh`
 - **Function**: Runs complete experiment suite
 - **Features**:
-  - Invokes real ONNXim simulator (not mock data)
+  - Invokes the ONNXim simulator flow
   - Supports all model configurations
   - Supports all adaptive algorithms
   - Supports ablation study configurations
 
 ### Single Configuration Runner
-- **File**: `scripts/run_single_config.py`
+- **File**: `tools/dev/run_single_config.py`
 - **Function**: Runs single configuration for quick testing
 - **Usage**: 
   ```bash
-  python3 run_single_config.py \
+  python3 tools/dev/run_single_config.py \
       --model llama2-7b:llama2-13b \
       --algorithm adaedl \
       --config ahasd_full
   ```
 
 ### Results Analysis
-- **File**: `scripts/analyze_ahasd_results.py`
+- **File**: `tools/dev/analyze_ahasd_results.py`
 - **Function**: Analyzes simulation results and generates plots
 - **Outputs**:
   - Throughput comparison plots
@@ -193,7 +168,7 @@ This document lists all files added/modified to implement the AHASD paper experi
   - Total overhead < 3% verification
 
 ### End-to-End Test
-- **File**: `scripts/test_e2e.sh`
+- **File**: `tools/dev/test_e2e.sh`
 - **Function**: Complete end-to-end test
 - **Checks**:
   - Dependency verification
@@ -243,11 +218,11 @@ This document lists all files added/modified to implement the AHASD paper experi
 | AAU | `AAU.h/cpp` | ~300 | 0.45 | 18.5 |
 | GatedScheduler | `GatedTaskScheduler.h/cpp` | ~150 | 0.00004 | 0.5 |
 | Integration | `AHASDIntegration.h` | ~500 | - | - |
-| XS Control | `AHASDControl.scala` | 252 | ~0.0001 | 0.2 |
-| XS Scheduler | `AHASDScheduler.scala` | 243 | ~0.0002 | 0.3 |
-| **Total** | | **~2415** | **0.4515** | **20.2** |
+| Control replay | `run_etcc_trace_replay.py` | n/a | modeled | modeled |
+| **Total** | | | **0.901** | **12.10 dyn / 3.838 stat** |
 
-**Verification**: 0.4515 mm² / 18 mm² (LPDDR5 die) = **2.51% < 3%** ✅
+**Verification**: `python3 scripts/hardware_cost_model.py --csv` emits the
+canonical hardware overhead table.
 
 ---
 
@@ -287,13 +262,12 @@ This document lists all files added/modified to implement the AHASD paper experi
 ls ONNXim/src/async_queue/EDC.h
 ls ONNXim/src/async_queue/TVC.h
 ls PIMSimulator/src/AAU.h
-ls XiangShan/src/main/scala/xiangshan/ahasd/*.scala
 
 # 2. Verify hardware overhead
 python3 scripts/validate_hardware_costs.py
 
 # 3. Run end-to-end test
-./scripts/test_e2e.sh
+./tools/dev/test_e2e.sh
 ```
 
 ### Deep Verification (1-2 hours)
@@ -303,7 +277,7 @@ cd ONNXim && mkdir build && cd build
 cmake .. -DENABLE_AHASD=ON && ninja
 
 # 5. Run single configuration
-./scripts/run_single_config.py \
+./tools/dev/run_single_config.py \
     --model llama2-7b:llama2-13b \
     --algorithm adaedl \
     --config ahasd_full
@@ -314,8 +288,8 @@ cmake .. -DENABLE_AHASD=ON && ninja
 ## 📝 Notes
 
 1. **All core modules are implemented**: EDC, TVC, AAU, AsyncQueue, Integration Layer
-2. **XiangShan integration is complete**: Scala code for CPU-side control
-3. **Experiment scripts use real simulators**: No mock data
+2. **Control-plane replay is complete**: EDC/TVC scheduling is reproduced from committed inputs
+3. **Experiment scripts use simulator and replay-derived data**
 4. **Hardware overhead is verifiable**: < 3% DRAM die
 5. **Documentation is comprehensive**: Architecture, API, reproduction guide
 

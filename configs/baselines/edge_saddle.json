@@ -1,0 +1,23 @@
+{
+  "_doc": "Edge-envelope SADDLE-style NPU-PIM baseline. It keeps task-level NPU/PIM overlap and PIM attention acceleration, but disables AHASD's dynamic draft-boundary control and draft-state-aware PIM command scheduling.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "platform_kind": "mobile_npu_pim",
+  "npu_matrix_tops": 16.0,
+  "npu_vector_tops": 8.2,
+  "npu_compute_chips": 2,
+  "enable_ahasd": false,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "enable_pim_cmd_sched": false,
+  "max_draft_length": 4,
+  "pim_enable": true,
+  "pim_channel_mask": "",
+  "pim_channel_stride": 2,
+  "pim_clock_mhz": 800,
+  "pim_enable_aau_fusion": true,
+  "pim_aau_fusion_ratio": 0.75,
+  "pim_gtsu_switch_ns": 55,
+  "dram_channels": 2,
+  "dram_freq": 800
+}

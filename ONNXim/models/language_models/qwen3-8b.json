@@ -1,0 +1,15 @@
+{
+  "num_hidden_layers": 36,
+  "hidden_size": 4096,
+  "num_kv_heads": 8,
+  "num_attention_heads": 32,
+  "intermediate_size": 12288,
+  "ffn_type": "llama",
+  "activation_function": "swish",
+  "vocab_size": 151936,
+  "max_seq_length": 40960,
+  "run_single_layer": true,
+  "tensor_parallel_size": 1,
+  "pipeline_parallel_size": 1,
+  "source_note": "Generated from Qwen/Qwen3-8B Hugging Face config.json; silu/SwiGLU is mapped to ONNXim's existing llama+swish FFN path."
+}

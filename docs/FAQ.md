@@ -90,7 +90,7 @@ pip3 install -r requirements.txt
 ### Q: How long does a simulation take?
 
 **A**: 
-- **Quick demo** (mock mode): ~1-2 minutes
+- **Quick demo**: ~1-2 minutes for a short smoke validation
 - **Cycle-accurate** (real simulation): 30 min - several hours
 - Depends on: model size, generation length, hardware
 
@@ -100,11 +100,11 @@ pip3 install -r requirements.txt
 1. Use smaller models (OPT-1.3B vs PaLM-62B)
 2. Reduce generation length (`--gen-length 512`)
 3. Run in parallel on multiple cores
-4. Use mock mode for testing
+4. Use the fast-replay release command for full paper-data regeneration
 
-### Q: What does "mock simulation" mean?
+### Q: What is the fastest release validation path?
 
-**A**: For quick testing, we provide pre-computed approximate results instead of full cycle-accurate simulation. Useful for validating setup and scripts.
+**A**: Use `scripts/reproduce_paper_data.py --execution-mode fast-replay`. It regenerates the complete paper-data matrix from architecture configuration, model JSON, acceptance traces, and replay counters.
 
 ### Q: How do I run real (cycle-accurate) simulations?
 
@@ -135,13 +135,13 @@ For common use cases, see [Configuration Guide](Configuration.md#configuration-e
 
 ```bash
 # Baseline (no AHASD)
-python3 scripts/run_single_config.py --model ... --algorithm ...
+python3 tools/dev/run_single_config.py --model ... --algorithm ...
 
 # With EDC only
-python3 scripts/run_single_config.py --model ... --algorithm ... --enable-edc
+python3 tools/dev/run_single_config.py --model ... --algorithm ... --enable-edc
 
 # Full AHASD
-python3 scripts/run_single_config.py --model ... --algorithm ... \
+python3 tools/dev/run_single_config.py --model ... --algorithm ... \
   --enable-edc --enable-tvc --enable-aau
 ```
 
@@ -200,7 +200,7 @@ results/my_experiment/
 **A**: Use the analysis script:
 
 ```bash
-python3 scripts/analyze_ahasd_results.py ./results/
+python3 tools/dev/analyze_ahasd_results.py ./results/
 
 # Outputs:
 # results/plots/throughput_comparison.png
@@ -212,7 +212,7 @@ python3 scripts/analyze_ahasd_results.py ./results/
 ### Q: My results don't match the paper
 
 **A**: Possible reasons:
-1. Using mock simulation (not cycle-accurate)
+1. Using a different execution path than the release fast-replay command
 2. Different random seed
 3. Different hardware configuration
 4. Need longer warmup period
@@ -404,4 +404,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 3. Expected vs actual behavior
 4. System information
 5. Relevant log files
-

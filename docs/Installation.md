@@ -250,7 +250,7 @@ python3 scripts/validate_hardware_costs.py
 # Expected: ✓ Claim VALIDATED (overhead = 2.51% < 3%)
 
 # 2. Run quick demo
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
@@ -274,7 +274,7 @@ cd $PIM_SIM_HOME
 # Test AHASD integration
 cd $AHASD_HOME
 python3 -c "
-from scripts.run_single_config import *
+from tools.dev.run_single_config import *
 print('✓ All imports successful')
 "
 ```

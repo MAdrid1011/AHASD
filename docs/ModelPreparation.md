@@ -356,19 +356,19 @@ After preparing models:
 
 1. **Test single model**:
 ```bash
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model opt-1.3b-opt-6.7b \
   --algorithm specdec
 ```
 
 2. **Run full experiments**:
 ```bash
-./scripts/run_ahasd_simulation.sh
+./tools/dev/run_ahasd_simulation.sh
 ```
 
 3. **Analyze results**:
 ```bash
-python3 scripts/analyze_ahasd_results.py ./results/
+python3 tools/dev/analyze_ahasd_results.py ./results/
 ```
 
 ---

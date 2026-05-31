@@ -17,10 +17,13 @@
 
 #include "LanguageScheduler.h"
 #include "../SyntheticAcceptanceModel.h"
+#include "../async_queue/VSKM.h"
+
+#include <utility>
 
 // B2.3: forward declarations so we do not leak AHASD / PIM headers via the
 // scheduler interface (Simulator.cc injects them via attach_ahasd()).
-namespace AHASD { class AHASDIntegration; }
+namespace AHASD { class AHASDIntegration; class SSRCCoordinator; }
 class PIMBackend;
 
 class SpecDecodeScheduler : public LangScheduler {
@@ -40,6 +43,11 @@ class SpecDecodeScheduler : public LangScheduler {
   // build where AHASD is disabled; callers must be null-safe).
   void attach_ahasd(AHASD::AHASDIntegration* ahasd, PIMBackend* pim);
 
+  // F1 — late binding for SSRC. Simulator calls this alongside attach_ahasd.
+  // nullptr is valid (SSRC coordinator present but disabled is also OK;
+  // `is_enabled()` guards every code path inside the scheduler).
+  void attach_ssrc(AHASD::SSRCCoordinator* ssrc);
+
   void cycle() override;
   std::unique_ptr<Model> pop_model() override;
   void finish_model(uint32_t model_id) override;
@@ -49,6 +57,8 @@ class SpecDecodeScheduler : public LangScheduler {
   // B2.5 — end-of-simulation summary of synthetic acceptance outcomes.
   // Simulator calls this once run completes.
   void print_acceptance_stats() const;
+  void print_vskm_stats() const;
+  const AHASD::VSKMStats& vskm_stats() const;
 
  protected:
   // Hooks for later milestones.
@@ -68,6 +78,21 @@ class SpecDecodeScheduler : public LangScheduler {
     uint64_t issue_cycle = 0;  // B2.3 — elapsed cycles fed into TVC tables.
   };
 
+  struct RoundTrace {
+    uint32_t request_id = 0;
+    uint32_t spec_round = 0;
+    uint32_t planned_draft_length = 0;
+    uint32_t accepted_length = 0;
+    uint64_t draft_issue_cycle = 0;
+    uint64_t draft_finish_cycle = 0;
+    uint64_t verify_issue_cycle = 0;
+    uint64_t verify_finish_cycle = 0;
+    uint32_t draft_tasks_finished = 0;
+    uint32_t preverify_count = 0;
+    uint32_t preverify_tokens = 0;
+    float entropy = 0.0f;
+  };
+
   std::unique_ptr<LanguageModel> _target_model;
   json _target_info;
   bool _target_attached = false;
@@ -81,6 +106,12 @@ class SpecDecodeScheduler : public LangScheduler {
   // B2.3 — non-owning pointers injected by Simulator::attach_ahasd().
   AHASD::AHASDIntegration* _ahasd = nullptr;
   PIMBackend* _pim = nullptr;
+  // F1 — non-owning pointer injected by Simulator::attach_ssrc().
+  AHASD::SSRCCoordinator* _ssrc = nullptr;
+  // Per-request: which (spec_round) we most recently asked SSRC to defer.
+  // Used to invoke on_round_verified with the right round even when the
+  // scheduler has already advanced spec_phase for the next round.
+  std::map<uint32_t, uint32_t> _ssrc_deferred_round;
 
   // Per-request bookkeeping for B2.3 TVC pre-verify gating.
   std::map<uint32_t, uint32_t> _pre_verified_in_round;  // request_id -> round idx last pre-verified
@@ -92,11 +123,15 @@ class SpecDecodeScheduler : public LangScheduler {
   // Synthetic entropy hint for EDC (B2.3). Real entropy arrives once the
   // synthetic acceptance model lands in B2.5.
   float compute_entropy_hint(const LangRequest& req) const;
+  uint64_t kv_bytes_per_token() const;
 
   // B2.5 — synthetic acceptance model. Owned by the scheduler so mode /
   // coeffs are scoped to the speculative path; load_from_config is called
   // once in the constructor.
   ahasd_accept::SyntheticAcceptanceModel _accept_model;
+  AHASD::VSKM _vskm;
+  std::map<uint32_t, uint64_t> _kv_state_stall_until;
+  std::map<std::pair<uint32_t, uint32_t>, RoundTrace> _round_traces;
 
   // B2.5 — smoke + B2.7 consumption: tally of how many rounds the EDC
   // picked each (k, accepted_length) pair so the end-of-simulation log
@@ -117,6 +152,7 @@ class SpecDecodeScheduler : public LangScheduler {
 
   void apply_verify_result(LangRequest& req, uint32_t draft_length,
                            uint32_t accepted_length);
+  RoundTrace& round_trace(uint32_t request_id, uint32_t spec_round);
 };
 
 #endif

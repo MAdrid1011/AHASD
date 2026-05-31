@@ -40,8 +40,7 @@ REPO = HERE.parent
 BASELINES_DIR = REPO / "configs/baselines"
 
 
-# Same metric wall used by run_b27_smoke.py, kept close to that file so
-# the two scripts agree on definitions. Copy-paste is intentional here;
+# Metric extraction patterns for ONNXim logs. Copy-paste is intentional here;
 # extracting to a shared module is scope for a later refactor.
 REGEXES = [
     ("sim_finished_cycles",      r"Simulation Finished at (\d+) cycle"),
@@ -53,10 +52,50 @@ REGEXES = [
     ("total_energy_mj",          r"Total Energy:\s*([\d.]+) mJ"),
     ("draft_rounds",             r"Total Draft Rounds:\s*(\d+)"),
     ("verifies",                 r"Total Verifies:\s*(\d+)"),
+    ("preverifies",              r"Total Pre-verifies:\s*(\d+)"),
+    ("total_draft_tokens_generated", r"Total Draft Tokens Generated:\s*(\d+)"),
+    ("total_verified_draft_tokens", r"Total Verified Draft Tokens:\s*(\d+)"),
+    ("total_rejected_draft_tokens", r"Total Rejected Draft Tokens:\s*(\d+)"),
+    ("rejected_draft_token_ratio", r"Rejected Draft Token Ratio:\s*([\d.]+)"),
+    ("pim_useful_compute_ratio", r"PIM Useful Compute Ratio:\s*([\d.]+)"),
+    ("total_preverify_tokens",   r"Total Pre-verify Tokens:\s*(\d+)"),
     ("pim_aau_fused_events",     r"AAU fused events:\s*(\d+)"),
     ("gtsu_switches",            r"GTSU switches:\s*(\d+)"),
     ("acceptance_ratio",         r"accept_ratio=([\d.]+)"),
     ("acceptance_samples",       r"Acceptance Samples:\s*(\d+)"),
+    ("mean_draft_length",        r"Acceptance Samples:\s*\d+\s*\|\s*mean_k=([\d.]+)"),
+    ("mean_accepted_length",     r"Acceptance Samples:\s*\d+\s*\|\s*mean_k=[\d.]+\s*\|\s*mean_accepted=([\d.]+)"),
+    ("mean_uncommitted_batches", r"Mean Uncommitted Batches:\s*([\d.]+)"),
+    ("peak_uncommitted_batches", r"Peak Uncommitted Batches:\s*([\d.]+)"),
+    ("peak_speculative_kv_bytes", r"Peak Speculative KV Bytes:\s*(\d+)"),
+    ("rejected_kv_write_bytes",  r"Rejected KV Write Bytes:\s*(\d+)"),
+    ("total_kv_write_bytes",     r"Total KV Write Bytes:\s*(\d+)"),
+    ("rejected_kv_write_ratio",  r"Rejected KV Write Ratio:\s*([\d.]+)"),
+    ("external_kv_traffic_bytes", r"External KV Traffic Bytes:\s*(\d+)"),
+    ("kv_writes_per_accepted_token", r"KV Writes Per Accepted Token:\s*([\d.]+)"),
+    ("rollback_cycles",          r"Rollback Cycles:\s*(\d+)"),
+    ("rollback_events",          r"Rollback Events:\s*(\d+)"),
+    ("version_table_lookups",    r"Version Table Lookups:\s*(\d+)"),
+    ("free_list_reuses",         r"Free List Reuses:\s*(\d+)"),
+    ("metadata_updates",         r"Metadata Updates:\s*(\d+)"),
+    ("metadata_updates_per_round", r"Metadata Updates Per Round:\s*([\d.]+)"),
+    ("edc_prediction_accuracy",  r"Total Predictions:\s*\d+,\s*Accuracy:\s*([\d.]+)%"),
+    ("edc_suppression_rate",     r"Total Drafts:\s*\d+,\s*Suppressed:\s*\d+\s*\(([\d.]+)%\)"),
+    ("tvc_preverifications_inserted", r"Total Decisions:\s*\d+,\s*Pre-verifications Inserted:\s*(\d+)"),
+    ("tvc_success_rate",         r"Successful Pre-verifications:\s*\d+\s*\(([\d.]+)%\)"),
+    ("tvc_prevented_npu_idles",  r"Prevented NPU Idles:\s*(\d+)"),
+    ("pim_command_candidate_slots", r"\[PIMCmd\] candidate slots:\s*(\d+)"),
+    ("pim_command_issued",       r"\[PIMCmd\] candidate slots:\s*\d+\s*;\s*issued commands:\s*(\d+)"),
+    ("pim_command_issue_pct",    r"\[PIMCmd\] candidate slots:\s*\d+\s*;\s*issued commands:\s*\d+\s*;\s*issue rate:\s*([\d.]+)%"),
+    ("tlm_read_attempts",        r"\[PIMCmd\] TLM read attempts:\s*(\d+)"),
+    ("tlm_read_blocked",         r"\[PIMCmd\] TLM read attempts:\s*\d+\s*;\s*blocked:\s*(\d+)"),
+    ("tlm_read_blocking_pct",    r"\[PIMCmd\] TLM read attempts:\s*\d+\s*;\s*blocked:\s*\d+\s*;\s*blocking rate:\s*([\d.]+)%"),
+    ("tlm_read_active_attempts", r"\[PIMCmd\] TLM read active-window attempts:\s*(\d+)"),
+    ("tlm_read_active_blocked",  r"\[PIMCmd\] TLM read active-window attempts:\s*\d+\s*;\s*blocked:\s*(\d+)"),
+    ("tlm_read_active_blocking_pct", r"\[PIMCmd\] TLM read active-window attempts:\s*\d+\s*;\s*blocked:\s*\d+\s*;\s*blocking rate:\s*([\d.]+)%"),
+    ("tlm_read_inactive_attempts", r"\[PIMCmd\] TLM read inactive-window attempts:\s*(\d+)"),
+    ("tlm_read_inactive_blocked", r"\[PIMCmd\] TLM read inactive-window attempts:\s*\d+\s*;\s*blocked:\s*(\d+)"),
+    ("tlm_read_inactive_blocking_pct", r"\[PIMCmd\] TLM read inactive-window attempts:\s*\d+\s*;\s*blocked:\s*\d+\s*;\s*blocking rate:\s*([\d.]+)%"),
 ]
 
 
@@ -204,8 +243,15 @@ def main() -> int:
     write_models_list(draft, target, deployed_name, args.max_draft_length, models_list)
 
     log_path = out_dir / "log.txt"
-    rc = run_simulator(args.onnxim.resolve(), cfg_path, models_list,
-                        deployed_name, log_path, args.timeout_s)
+    timeout_hit = False
+    try:
+        rc = run_simulator(args.onnxim.resolve(), cfg_path, models_list,
+                           deployed_name, log_path, args.timeout_s)
+    except subprocess.TimeoutExpired:
+        timeout_hit = True
+        rc = 124
+        with log_path.open("a") as log:
+            log.write(f"\n[baseline] simulator timeout after {args.timeout_s}s\n")
     metrics = parse_log(log_path.read_text())
     metrics["__baseline"] = args.baseline
     metrics["__model_pair"] = f"{draft}:{target}"
@@ -213,10 +259,13 @@ def main() -> int:
     metrics["__acceptance_csv"] = (str(args.acceptance_csv.resolve())
                                     if args.acceptance_csv else None)
     metrics["__returncode"] = rc
+    metrics["__timeout_s"] = args.timeout_s if timeout_hit else None
+    metrics["__timed_out"] = timeout_hit
     (out_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
 
     if rc != 0:
-        print(f"[baseline] simulator rc={rc}; see {log_path}", file=sys.stderr)
+        reason = "timeout" if timeout_hit else f"rc={rc}"
+        print(f"[baseline] simulator {reason}; see {log_path}", file=sys.stderr)
         return rc
     print(f"[baseline] ok. cycles={metrics.get('sim_finished_cycles')} "
           f"energy={metrics.get('total_energy_mj')} mJ "

@@ -32,9 +32,6 @@ cd ../../PIMSimulator
 scons -j8
 
 cd ..
-
-# XiangShan build (optional, for control logic verification)
-# cd XiangShan && make
 ```
 
 ## 🚀 Run Your First Experiment
@@ -44,7 +41,7 @@ cd ..
 Run a pre-configured demo with LLaMA2-7B/13B:
 
 ```bash
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc \
@@ -53,7 +50,7 @@ python3 scripts/run_single_config.py \
   --output ./results/quickstart_demo
 ```
 
-**Expected Runtime**: ~2 minutes (mock simulation)
+**Expected Runtime**: ~2 minutes for a short smoke validation.
 
 ### Option 2: Validate Hardware Costs
 
@@ -117,20 +114,20 @@ Test individual components:
 
 ```bash
 # Baseline (no AHASD)
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --output ./results/baseline
 
 # With EDC only
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc \
   --output ./results/with_edc
 
 # With EDC + TVC
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc \
@@ -138,7 +135,7 @@ python3 scripts/run_single_config.py \
   --output ./results/with_edc_tvc
 
 # Full AHASD
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc \
@@ -153,7 +150,7 @@ Test different adaptive drafting algorithms:
 
 ```bash
 for algo in specdec svip adaedl banditspec; do
-  python3 scripts/run_single_config.py \
+  python3 tools/dev/run_single_config.py \
     --model llama2-7b-llama2-13b \
     --algorithm $algo \
     --enable-edc --enable-tvc --enable-aau \
@@ -165,21 +162,21 @@ done
 
 ```bash
 # Small model
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model opt-1.3b-opt-6.7b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
   --output ./results/small
 
 # Medium model  
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
   --output ./results/medium
 
 # Large model
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model palm-8b-palm-62b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
@@ -192,7 +189,7 @@ After running experiments, generate plots and tables:
 
 ```bash
 # Analyze all results in the results directory
-python3 scripts/analyze_ahasd_results.py ./results/
+python3 tools/dev/analyze_ahasd_results.py ./results/
 
 # Outputs will be in ./results/plots/
 ls results/plots/
@@ -225,7 +222,7 @@ export CXX=g++-9
 pip3 install matplotlib numpy pandas
 ```
 
-**Problem**: `Permission denied: ./scripts/run_ahasd_simulation.sh`
+**Problem**: `Permission denied: ./tools/dev/run_ahasd_simulation.sh`
 ```bash
 chmod +x scripts/*.sh scripts/*.py
 ```
@@ -233,7 +230,7 @@ chmod +x scripts/*.sh scripts/*.py
 ### Simulation Issues
 
 **Problem**: Simulation takes too long
-- This is a cycle-accurate simulator; for quick testing, use mock mode
+- This is a cycle-accurate simulator; for release data, use the fast-replay command in `reproducibility/README.md`
 - Reduce `--gen-length` parameter
 - Use smaller models
 
@@ -252,7 +249,7 @@ chmod +x scripts/*.sh scripts/*.py
 ## 💡 Tips
 
 1. **Start Small**: Begin with small models and short generation lengths
-2. **Use Mock Mode**: For quick testing, the simulator uses mock execution
+2. **Use Smoke Validation**: Start with short workloads before long simulator runs
 3. **Check Logs**: Enable verbose logging with `--verbose` flag
 4. **Parallel Runs**: Run multiple configurations in parallel to save time
 5. **Save Configs**: Keep successful configurations for future reference

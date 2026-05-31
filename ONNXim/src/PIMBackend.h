@@ -23,6 +23,7 @@
 //   affect wall-cycle progress and per-class statistics.
 
 #include "Common.h"
+#include "SSRC.h"
 
 #include <atomic>
 #include <string>
@@ -54,6 +55,16 @@ class PIMBackend {
   // request back into the response path after `bypass_latency_npu_cycles`.
   bool try_aau_bypass(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
   uint64_t bypass_latency_npu_cycles() const { return _aau_bypass_npu_cycles; }
+
+  // F1 — SSRC bypass path. When an SSRC coordinator has marked this
+  // request_id as "deferred low-confidence draft" AND the request is an
+  // attention-class write, the PIM rank redirects it through the SSRC
+  // bypass queue with `ssrc_bypass_latency_npu_cycles()` of latency. Real
+  // DRAM is never touched, so bytes + cycles + energy are all saved. Caller
+  // MUST skip on_dram_push when this returns true.
+  void attach_ssrc(AHASD::SSRCCoordinator* ssrc) { _ssrc = ssrc; }
+  bool try_ssrc_bypass(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
+  uint64_t ssrc_bypass_latency_npu_cycles() const { return _ssrc_bypass_npu_cycles; }
 
   // Called by Simulator when a memory response leaves DRAM → ICNT.
   void on_dram_pop(uint32_t cid, MemoryAccess* req, uint64_t npu_cycle);
@@ -94,6 +105,15 @@ class PIMBackend {
     uint64_t total_gtsu_switches = 0;
     uint64_t total_gtsu_stall_npu_cycles = 0;
     uint64_t total_tvc_hold_npu_cycles = 0;
+    /* F1 — SSRC counters. bytes_saved tracks attention-class writes
+     * that never hit DRAM because their draft round was deferred. */
+    uint64_t total_ssrc_bypassed_requests = 0;
+    uint64_t total_ssrc_bypassed_bytes    = 0;
+    /* Diagnostic counters for pilot debugging (cheap; dropped in prod). */
+    uint64_t ssrc_tagged_writes_total    = 0;
+    uint64_t ssrc_tagged_pim_writes_seen = 0;
+    uint64_t ssrc_rejected_invalid_id    = 0;
+    uint64_t ssrc_rejected_not_active    = 0;
     uint64_t pim_cycle = 0;
     uint64_t last_npu_cycle = 0;
   };
@@ -113,6 +133,9 @@ class PIMBackend {
   double _npu_to_pim_ratio = 1.0;  // pim_clock / npu_clock
   uint32_t _gtsu_switch_npu_cycles = 0;
   uint32_t _aau_bypass_npu_cycles = 0;
+  uint32_t _ssrc_bypass_npu_cycles = 0;
+
+  AHASD::SSRCCoordinator* _ssrc = nullptr;
 
   Stats _stats;
 };

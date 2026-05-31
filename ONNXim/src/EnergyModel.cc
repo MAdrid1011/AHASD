@@ -7,6 +7,7 @@
 #include "EnergyModel.h"
 
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <cmath>
 
 namespace ahasd_energy {
@@ -91,9 +92,19 @@ Breakdown EnergyModel::compute(const CoreAggregate& core,
   b.gtsu_mj = static_cast<double>(pim.total_gtsu_switches) *
               _coeffs.gtsu_switch_pj_per_event * kPJtoMJ;
 
-  // --- AAU savings (negative contribution; never drives total below 0) ---
-  b.aau_savings_mj = static_cast<double>(pim.total_aau_fused_events) *
-                     _coeffs.aau_fusion_save_pj_per_event * kPJtoMJ;
+  // --- AAU savings (negative contribution) ---
+  // The per-event LUT is an upper-bound estimate. On long-context runs the
+  // number of fused attention requests can be very high, so cap the credit by
+  // the byte traffic that AAU actually prevented from crossing PIM/bus paths.
+  double event_credit_mj = static_cast<double>(pim.total_aau_fused_events) *
+                           _coeffs.aau_fusion_save_pj_per_event * kPJtoMJ;
+  double byte_credit_mj = event_credit_mj;
+  if (pim.total_aau_fusion_saved_bytes > 0) {
+    byte_credit_mj = static_cast<double>(pim.total_aau_fusion_saved_bytes) *
+                     (_coeffs.pim_read_pj_per_byte + _coeffs.bus_pj_per_byte) *
+                     kPJtoMJ;
+  }
+  b.aau_savings_mj = std::min(event_credit_mj, byte_credit_mj);
 
   b.total_mj = b.npu_active_mj + b.npu_vector_mj + b.npu_idle_mj +
                b.pim_read_mj + b.pim_write_mj + b.pim_leak_mj +

@@ -34,9 +34,44 @@ jobs:
         test -f PIMSimulator/src/GatedTaskScheduler.h || exit 1
         echo "✓ All AHASD modules present"
     
-    - name: Run end-to-end test
+    - name: Compile reproduction scripts
       run: |
-        bash scripts/test_e2e.sh
+        python3 -m py_compile \
+          scripts/reproduce_paper_data.py \
+          scripts/run_etcc_trace_replay.py \
+          scripts/run_baseline.py \
+          scripts/gen_acceptance_trace.py \
+          scripts/hardware_cost_model.py \
+          scripts/validate_hardware_costs.py
+
+    - name: Run fast replay reproduction
+      run: |
+        python3 scripts/reproduce_paper_data.py \
+          --execution-mode fast-replay \
+          --output-dir /tmp/ahasd-ci-repro \
+          --timeout-s 900
+
+    - name: Validate reproduced outputs
+      run: |
+        python3 - <<'PY'
+        import json
+        from pathlib import Path
+
+        root = Path("/tmp/ahasd-ci-repro")
+        manifest = json.load(open(root / "manifest.json"))
+        expected = json.load(open("reproducibility/expected_outputs.json"))["outputs"]
+        expected_names = {row["name"] for row in expected}
+        actual_names = {path.name for path in (root / "csv").glob("*.csv")}
+        missing = sorted(expected_names - actual_names)
+        extra = sorted(actual_names - expected_names)
+
+        assert manifest["ok_cells"] == manifest["cell_count"] == 108, manifest
+        assert manifest.get("blocked_metrics", []) == [], manifest.get("blocked_metrics", [])
+        assert missing == [], missing
+        assert extra == [], extra
+        assert len(list((root / "csv").glob("sensitivity_*.csv"))) == 16
+        print("✓ fast replay reproduced 108/108 cells and all expected CSV outputs")
+        PY
 
   documentation:
     name: Check Documentation
@@ -51,4 +86,3 @@ jobs:
           test -f "docs/${doc}.md" || exit 1
         done
         echo "✓ All documentation files present"
-

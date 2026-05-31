@@ -93,8 +93,12 @@ class AHASDIntegration {
     if (!decision.first) return 0;
     uint32_t bounded = std::min<uint32_t>(decision.second, config_.pre_verify_max);
     bounded = std::min(bounded, pending_draft_count);
+    if (bounded >= pending_draft_count && pending_draft_count > 1) {
+      bounded = pending_draft_count - 1;
+    }
     if (bounded == 0) return 0;
     ++total_pre_verifies_;
+    tvc_->record_prevented_idle();
     return bounded;
   }
 
@@ -103,10 +107,16 @@ class AHASDIntegration {
                             uint32_t draft_length,
                             uint32_t accepted_length,
                             uint64_t verify_npu_cycles,
-                            uint32_t kv_length) {
-    ++total_verifies_;
-    total_draft_tokens_ += draft_length;
-    total_accepted_tokens_ += accepted_length;
+                            uint32_t kv_length,
+                            bool count_as_final_verify = true) {
+    if (count_as_final_verify) {
+      ++total_verifies_;
+      total_verified_draft_tokens_ += draft_length;
+      total_accepted_tokens_ += accepted_length;
+      if (draft_length > accepted_length) {
+        total_rejected_draft_tokens_ += (draft_length - accepted_length);
+      }
+    }
     if (config_.enable_edc && edc_ != nullptr) {
       edc_->update_on_verification(fully_accepted, accepted_length);
     }
@@ -122,9 +132,14 @@ class AHASDIntegration {
     }
   }
 
+  void record_draft_tokens_generated(uint32_t draft_tokens) {
+    total_pim_draft_tokens_ += draft_tokens;
+  }
+
   // Called from SpecDecodeScheduler::finish_model on a PRE_VERIFY completion.
   void record_pre_verify(uint64_t pim_pre_verify_cycles,
                          uint32_t pre_verify_length) {
+    total_preverify_tokens_ += pre_verify_length;
     if (config_.enable_tvc && tvc_ != nullptr) {
       tvc_->record_pim_preverification(pim_pre_verify_cycles,
                                        pre_verify_length);
@@ -133,6 +148,12 @@ class AHASDIntegration {
 
   // NPU-side progress beacon: called every NPU cycle by Simulator. TVC uses
   // it to estimate remaining verify cycles; EDC does not need it.
+  void start_npu_task(uint64_t npu_cycle) {
+    if (config_.enable_tvc && tvc_ != nullptr) {
+      tvc_->start_npu_task(npu_cycle);
+    }
+  }
+
   void cycle_npu_with_progress(uint64_t npu_cycle) {
     if (config_.enable_tvc && tvc_ != nullptr) {
       tvc_->update_npu_progress(npu_cycle);
@@ -144,24 +165,46 @@ class AHASDIntegration {
     total_verifies_ = 0;
     total_pre_verifies_ = 0;
     total_accepted_tokens_ = 0;
-    total_draft_tokens_ = 0;
+    total_verified_draft_tokens_ = 0;
+    total_rejected_draft_tokens_ = 0;
+    total_pim_draft_tokens_ = 0;
+    total_preverify_tokens_ = 0;
     if (edc_ != nullptr) edc_->reset();
     if (tvc_ != nullptr) tvc_->reset();
   }
 
   double acceptance_rate() const {
-    if (total_draft_tokens_ == 0) return 0.0;
+    if (total_verified_draft_tokens_ == 0) return 0.0;
     return static_cast<double>(total_accepted_tokens_) /
-           static_cast<double>(total_draft_tokens_);
+           static_cast<double>(total_verified_draft_tokens_);
+  }
+
+  double rejected_draft_ratio() const {
+    if (total_verified_draft_tokens_ == 0) return 0.0;
+    return static_cast<double>(total_rejected_draft_tokens_) /
+           static_cast<double>(total_verified_draft_tokens_);
+  }
+
+  double pim_useful_compute_ratio() const {
+    if (total_pim_draft_tokens_ == 0) return 0.0;
+    const uint64_t useful =
+        std::min<uint64_t>(total_accepted_tokens_, total_pim_draft_tokens_);
+    return static_cast<double>(useful) /
+           static_cast<double>(total_pim_draft_tokens_);
   }
 
   void print_statistics(uint64_t total_cycles) const {
     (void)total_cycles;  // reserved for B2.4 (per-cycle energy fold-in).
     spdlog::info("=== AHASD Integration Statistics ===");
     spdlog::info("Total Draft Rounds: {}", total_draft_rounds_);
-    spdlog::info("Total Draft Tokens Generated: {}", total_draft_tokens_);
+    spdlog::info("Total Draft Tokens Generated: {}", total_pim_draft_tokens_);
+    spdlog::info("Total Verified Draft Tokens: {}", total_verified_draft_tokens_);
+    spdlog::info("Total Rejected Draft Tokens: {}", total_rejected_draft_tokens_);
+    spdlog::info("Rejected Draft Token Ratio: {:.4f}", rejected_draft_ratio());
+    spdlog::info("PIM Useful Compute Ratio: {:.4f}", pim_useful_compute_ratio());
     spdlog::info("Total Verifies: {}", total_verifies_);
     spdlog::info("Total Pre-verifies: {}", total_pre_verifies_);
+    spdlog::info("Total Pre-verify Tokens: {}", total_preverify_tokens_);
     spdlog::info("Total Accepted Tokens: {} ({:.2f}%)",
                  total_accepted_tokens_, acceptance_rate() * 100.0);
     if (config_.enable_edc && edc_ != nullptr) {
@@ -198,7 +241,10 @@ class AHASDIntegration {
   uint64_t total_verifies_ = 0;
   uint64_t total_pre_verifies_ = 0;
   uint64_t total_accepted_tokens_ = 0;
-  uint64_t total_draft_tokens_ = 0;
+  uint64_t total_verified_draft_tokens_ = 0;
+  uint64_t total_rejected_draft_tokens_ = 0;
+  uint64_t total_pim_draft_tokens_ = 0;
+  uint64_t total_preverify_tokens_ = 0;
 };
 
 }  // namespace AHASD

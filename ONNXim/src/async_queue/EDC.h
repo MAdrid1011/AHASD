@@ -64,6 +64,9 @@ private:
     uint32_t pht_index_mask_;   // pht_size_ - 1
     uint32_t leht_group_bits_;  // bits per LEHT-avg field in PHT index
     uint32_t leht_ptr_;         // Circular buffer pointer
+    uint32_t lceht_ptr_;        // Commit pointer paired with LCEHT
+    std::vector<uint16_t> pending_prediction_indices_;
+    std::vector<bool> pending_prediction_values_;
 
     // Helper: derive PHT sizing from LEHT/LLR. PHT index historically =
     // {avg(H_{4-7})[2:0], avg(H_{0-3})[2:0], LLR[2:0]} = 9 bits -> 512.
@@ -138,7 +141,8 @@ public:
           pht_size_(compute_pht_size(std::clamp<uint32_t>(llr_bits, 1u, 8u))),
           pht_index_mask_(pht_size_ - 1u),
           leht_group_bits_(3u),
-          leht_ptr_(0) {
+          leht_ptr_(0),
+          lceht_ptr_(0) {
         leht_.resize(leht_size_, 0);
         lceht_.resize(leht_size_, 0);
         pht_.resize(pht_size_, CounterState::WEAKLY_TAKEN);
@@ -164,6 +168,8 @@ public:
 
         // MSB of counter determines prediction
         bool should_continue = (static_cast<uint8_t>(prediction) >= 2);
+        pending_prediction_indices_.push_back(pht_index);
+        pending_prediction_values_.push_back(should_continue);
 
         if (!should_continue) {
             suppressed_drafts_++;
@@ -174,19 +180,29 @@ public:
 
     // Called after NPU verification completes
     void update_on_verification(bool fully_accepted, uint32_t accepted_count) {
-        if (llr_ > 0) {
-            llr_--;
+        for (size_t i = 0; i < pending_prediction_indices_.size(); ++i) {
+            // Prediction i decides whether to extend from token i+1 to i+2.
+            // It is useful only when the verified accepted prefix includes
+            // that next token; otherwise the extra draft work was wasted.
+            bool actual_taken = fully_accepted || (accepted_count > i + 1);
+            uint16_t pht_index = pending_prediction_indices_[i];
+            if (pending_prediction_values_[i] == actual_taken) {
+                correct_predictions_++;
+            }
+            update_counter(pht_[pht_index], actual_taken);
         }
+        pending_prediction_indices_.clear();
+        pending_prediction_values_.clear();
 
         if (fully_accepted) {
             lceht_ = leht_;
-            correct_predictions_++;
+            lceht_ptr_ = leht_ptr_;
         } else {
             leht_ = lceht_;
+            leht_ptr_ = lceht_ptr_;
         }
+        llr_ = 0;
 
-        uint16_t pht_index = calculate_pht_index();
-        update_counter(pht_[pht_index], fully_accepted);
     }
 
     // Reset state (for new inference sequence)
@@ -195,6 +211,9 @@ public:
         std::fill(lceht_.begin(), lceht_.end(), 0);
         llr_ = 0;
         leht_ptr_ = 0;
+        lceht_ptr_ = 0;
+        pending_prediction_indices_.clear();
+        pending_prediction_values_.clear();
     }
 
     // Getters for current state
@@ -239,4 +258,3 @@ public:
 };
 
 } // namespace AHASD
-

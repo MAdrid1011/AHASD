@@ -1,0 +1,21 @@
+{
+  "_doc": "F3 step 4 — SSRC + AAU + EDC + TVC (= ahasd_full + SSRC). The top-of-stack configuration. Identical to ahasd_ssrc.json but renamed for consistency with the D1 progressive ablation naming convention (ahasd_none / ahasd_aau / ahasd_aau_edc / ahasd_full).",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "enable_ahasd": true,
+  "enable_edc": true,
+  "enable_tvc": true,
+  "enable_aau": true,
+  "max_draft_length": 4,
+  "pim_enable": true,
+  "pim_channel_mask": "",
+  "pim_channel_stride": 2,
+  "pim_clock_mhz": 800,
+  "pim_enable_aau_fusion": true,
+  "pim_aau_fusion_ratio": 0.75,
+  "pim_gtsu_switch_ns": 55,
+  "ssrc_enable": true,
+  "ssrc_confidence_threshold": 5.0,
+  "ssrc_state_bytes_per_token": 128,
+  "ssrc_resident_limit_bytes": 4194304,
+  "ssrc_bypass_ns": 10
+}

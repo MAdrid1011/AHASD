@@ -21,7 +21,7 @@ Compare AHASD with sequential execution on GPU.
 
 ```bash
 # Run full evaluation suite
-./scripts/run_ahasd_simulation.sh
+./tools/dev/run_ahasd_simulation.sh
 
 # This runs:
 # - 3 model sizes (Small/Medium/Large)
@@ -30,7 +30,7 @@ Compare AHASD with sequential execution on GPU.
 # = 60 total configurations
 ```
 
-**Expected Runtime**: 30-60 minutes (mock mode)
+**Expected Runtime**: 30-60 minutes for short simulator-oriented checks.
 
 **Results Location**: `results/ahasd_TIMESTAMP/`
 
@@ -43,13 +43,13 @@ Compare with state-of-the-art operator-level parallelism.
 for model in opt-1.3b-opt-6.7b llama2-7b-llama2-13b palm-8b-palm-62b; do
   for algo in specdec svip adaedl banditspec; do
     # SpecPIM (operator-level sync)
-    python3 scripts/run_single_config.py \
+    python3 tools/dev/run_single_config.py \
       --model $model \
       --algorithm $algo \
       --output ./results/specpim_${model}_${algo}
     
     # AHASD (task-level async)
-    python3 scripts/run_single_config.py \
+    python3 tools/dev/run_single_config.py \
       --model $model \
       --algorithm $algo \
       --enable-edc --enable-tvc --enable-aau \
@@ -78,33 +78,33 @@ Evaluate contribution of each AHASD component.
 # Algorithm: AdaEDL
 
 # 1. Baseline (GPU-only)
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --output ./results/ablation/baseline
 
 # 2. NPU+PIM (task-level async only)
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --output ./results/ablation/npu_pim
 
 # 3. NPU+PIM+AAU
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-aau \
   --output ./results/ablation/npu_pim_aau
 
 # 4. NPU+PIM+AAU+EDC
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-aau --enable-edc \
   --output ./results/ablation/npu_pim_aau_edc
 
 # 5. AHASD Full (all components)
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
@@ -124,7 +124,7 @@ python3 scripts/run_single_config.py \
 ### Analyze Ablation Results
 
 ```bash
-python3 scripts/analyze_ahasd_results.py ./results/ablation/
+python3 tools/dev/analyze_ahasd_results.py ./results/ablation/
 
 # Generates:
 # results/ablation/plots/ablation_study.png
@@ -141,21 +141,21 @@ Test performance across different model sizes.
 
 ```bash
 # Small Models
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model opt-1.3b-opt-6.7b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
   --output ./results/scaling/small
 
 # Medium Models
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
   --output ./results/scaling/medium
 
 # Large Models
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model palm-8b-palm-62b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
@@ -181,7 +181,7 @@ Compare different adaptive drafting algorithms.
 ```bash
 # Test all algorithms with LLaMA2-7B/13B
 for algo in specdec svip adaedl banditspec; do
-  python3 scripts/run_single_config.py \
+  python3 tools/dev/run_single_config.py \
     --model llama2-7b-llama2-13b \
     --algorithm $algo \
     --enable-edc --enable-tvc --enable-aau \
@@ -209,7 +209,7 @@ Study EDC prediction accuracy and draft suppression.
 ```bash
 # Vary EDC parameters
 for pht_size in 256 512 1024; do
-  python3 scripts/run_single_config.py \
+  python3 tools/dev/run_single_config.py \
     --model llama2-7b-llama2-13b \
     --algorithm adaedl \
     --enable-edc --enable-tvc --enable-aau \
@@ -230,7 +230,7 @@ Study pre-verification insertion decisions.
 ```bash
 # Vary TVC parameters
 for min_preverify in 1 2 4; do
-  python3 scripts/run_single_config.py \
+  python3 tools/dev/run_single_config.py \
     --model llama2-7b-llama2-13b \
     --algorithm adaedl \
     --enable-edc --enable-tvc --enable-aau \
@@ -251,7 +251,7 @@ Test performance at different frequencies.
 ```bash
 # Sweep NPU frequencies
 for npu_freq in 800 1000 1200 1400; do
-  python3 scripts/run_single_config.py \
+  python3 tools/dev/run_single_config.py \
     --model llama2-7b-llama2-13b \
     --algorithm adaedl \
     --enable-edc --enable-tvc --enable-aau \
@@ -261,7 +261,7 @@ done
 
 # Sweep PIM frequencies
 for pim_freq in 600 800 1000 1200; do
-  python3 scripts/run_single_config.py \
+  python3 tools/dev/run_single_config.py \
     --model llama2-7b-llama2-13b \
     --algorithm adaedl \
     --enable-edc --enable-tvc --enable-aau \
@@ -274,14 +274,14 @@ done
 
 ## 📈 Generate Paper Figures
 
-### Figure 5: Throughput Comparison
+### Performance Throughput Comparison
 
 ```bash
 # Run all baselines and AHASD
-./scripts/run_ahasd_simulation.sh
+./tools/dev/run_ahasd_simulation.sh
 
 # Generate plot
-python3 scripts/analyze_ahasd_results.py ./results/ahasd_*/
+python3 tools/dev/analyze_ahasd_results.py ./results/ahasd_*/
 
 # Output: results/plots/throughput_comparison.png
 ```
@@ -289,7 +289,7 @@ python3 scripts/analyze_ahasd_results.py ./results/ahasd_*/
 ### Figure 6: Energy Efficiency
 
 ```bash
-# Same data as Figure 5
+# Same data as the performance throughput comparison
 python3 scripts/plot_energy_efficiency.py ./results/ahasd_*/
 
 # Output: results/plots/energy_efficiency.png
@@ -331,7 +331,7 @@ OUTPUT_BASE="./results/custom_exp"
 
 # Run experiments
 for param in value1 value2 value3; do
-  python3 scripts/run_single_config.py \
+  python3 tools/dev/run_single_config.py \
     --model $MODEL \
     --algorithm $ALGORITHM \
     --enable-edc --enable-tvc --enable-aau \
@@ -340,7 +340,7 @@ for param in value1 value2 value3; do
 done
 
 # Analyze results
-python3 scripts/analyze_ahasd_results.py $OUTPUT_BASE/
+python3 tools/dev/analyze_ahasd_results.py $OUTPUT_BASE/
 
 echo "Experiment complete! Results in $OUTPUT_BASE/plots/"
 ```
@@ -417,7 +417,7 @@ Before claiming reproduction:
 
 # Average over multiple runs
 for seed in 42 43 44 45 46; do
-  python3 scripts/run_single_config.py ... --random-seed $seed
+  python3 tools/dev/run_single_config.py ... --random-seed $seed
 done
 python3 scripts/average_results.py ./results/*/
 ```
@@ -443,7 +443,7 @@ python3 scripts/average_results.py ./results/*/
 **Problem**: Takes too long
 
 **Solution**:
-1. Use mock mode for testing
+1. Use the fast-replay release command for full paper-data regeneration
 2. Run parallel experiments
 3. Reduce model size
 4. Shorter generation length
@@ -467,4 +467,3 @@ After running experiments:
 4. Explore custom configurations
 
 See [Analysis Guide](Analysis.md) for detailed analysis techniques.
-

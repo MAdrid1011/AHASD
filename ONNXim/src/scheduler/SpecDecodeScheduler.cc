@@ -14,8 +14,9 @@
 //     elapsed cycles back to TVC and decision outcomes to EDC.
 //
 // Intentionally NOT in scope yet:
-//   * Real KV-cache rollback beyond a length truncation (real rollback
-//     including dirty-region management belongs to F1 alongside SSRC).
+//   * A physical attention kernel for versioned KV pages. VSKM models the
+//     architectural state-management cost and scheduling delay while tensor
+//     correctness still follows the existing resize-based KV path.
 //   * Acceptance driven by entropy: sample_accepted_length() still uses
 //     the placeholder from B2.1 until B2.5 lands the synthetic sampler.
 
@@ -23,6 +24,7 @@
 
 #include "../AHASDIntegration.h"
 #include "../PIMBackend.h"
+#include "../SSRC.h"
 
 #include <algorithm>
 
@@ -43,6 +45,20 @@ SpecDecodeScheduler::SpecDecodeScheduler(std::string name, std::string path,
   // live in SimulationConfig. Parametric by default; trace-replay and
   // trace_then_parametric kick in once `accept_trace_path` is set.
   _accept_model.load_from_config(_config);
+  AHASD::VSKMConfig vskm_cfg;
+  vskm_cfg.enable_vskm = _config.enable_vskm;
+  vskm_cfg.kv_management_mode = _config.kv_management_mode;
+  vskm_cfg.version_entries = _config.vskm_version_entries;
+  vskm_cfg.region_entries = _config.vskm_region_entries;
+  vskm_cfg.block_tokens = _config.vskm_block_tokens;
+  vskm_cfg.enable_lazy_rollback = _config.vskm_enable_lazy_rollback;
+  vskm_cfg.virtual_uncommitted_batches = _config.vskm_virtual_uncommitted_batches;
+  _vskm = AHASD::VSKM(vskm_cfg, kv_bytes_per_token());
+  spdlog::info("[VSKM] mode={} enable_vskm={} version_entries={} region_entries={} block_tokens={} lazy={}",
+               AHASD::kv_management_mode_name(_vskm.mode()),
+               _config.enable_vskm, _config.vskm_version_entries,
+               _config.vskm_region_entries, _config.vskm_block_tokens,
+               _config.vskm_enable_lazy_rollback);
 }
 
 bool SpecDecodeScheduler::attach_target_model(std::unique_ptr<LanguageModel> target_model,
@@ -70,6 +86,12 @@ void SpecDecodeScheduler::attach_ahasd(AHASD::AHASDIntegration* ahasd,
                (_pim != nullptr) && _pim->is_active());
 }
 
+void SpecDecodeScheduler::attach_ssrc(AHASD::SSRCCoordinator* ssrc) {
+  _ssrc = ssrc;
+  spdlog::info("[SpecDecode] SSRC attached: enabled={}",
+               (_ssrc != nullptr) && _ssrc->is_enabled());
+}
+
 float SpecDecodeScheduler::compute_entropy_hint(const LangRequest& req) const {
   // Synthetic entropy in the [0, H_MAX=10] range expected by EDC.
   // B2.5 will replace this with the trace-driven sampler output.
@@ -90,6 +112,17 @@ float SpecDecodeScheduler::compute_entropy_hint(const LangRequest& req) const {
   float base = 2.5f + 2.5f * ratio;               // 2.5 → 5.0 across request lifetime
   float jitter = 0.5f * static_cast<float>(req.spec_round % 4);  // 0.0 / 0.5 / 1.0 / 1.5
   return std::min(9.5f, std::max(0.5f, base + jitter));
+}
+
+uint64_t SpecDecodeScheduler::kv_bytes_per_token() const {
+  // VSKM accounts architectural KV state, not the reduced single-layer
+  // execution used to keep ONNXim turnaround feasible. LanguageScheduler's
+  // own memory accounting already scales KV cache by _num_layers in
+  // run_single_layer mode; mirror that policy here so speculative KV
+  // footprint/rollback/bandwidth are not undercounted by the layer count.
+  return 2ULL * static_cast<uint64_t>(_num_layers) *
+         static_cast<uint64_t>(_cache_dim) *
+         static_cast<uint64_t>(std::max<uint32_t>(1, _config.precision));
 }
 
 uint32_t SpecDecodeScheduler::pick_draft_length(const LangRequest& req) {
@@ -143,6 +176,25 @@ void SpecDecodeScheduler::print_acceptance_stats() const {
                c.base, c.alpha, c.length_decay, c.p_min);
 }
 
+void SpecDecodeScheduler::print_vskm_stats() const {
+  _vskm.print_statistics();
+}
+
+const AHASD::VSKMStats& SpecDecodeScheduler::vskm_stats() const {
+  return _vskm.stats();
+}
+
+SpecDecodeScheduler::RoundTrace& SpecDecodeScheduler::round_trace(
+    uint32_t request_id, uint32_t spec_round) {
+  auto key = std::make_pair(request_id, spec_round);
+  auto [it, inserted] = _round_traces.emplace(key, RoundTrace{});
+  if (inserted) {
+    it->second.request_id = request_id;
+    it->second.spec_round = spec_round;
+  }
+  return it->second;
+}
+
 bool SpecDecodeScheduler::busy() {
   if (LangScheduler::busy()) return true;
   // Any request still mid-round?
@@ -173,6 +225,7 @@ std::unique_ptr<Model> SpecDecodeScheduler::build_model(LanguageModel& model,
   input.request_id = req.request_id;
   input.seq_length = seq_length;
   input.context_length = req.current_length;
+  input.spec_task_type = static_cast<uint32_t>(task_type);
   for (uint32_t i = 0; i < _num_sim_layers; i++) {
     input.key_cache.push_back(req.key_cache[i].get());
     input.value_cache.push_back(req.value_cache[i].get());
@@ -193,6 +246,13 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
   // outstanding-model flag (set when we issue, cleared in finish_model).
   if (req.running) {
     return false;
+  }
+  auto stall_it = _kv_state_stall_until.find(req.request_id);
+  if (stall_it != _kv_state_stall_until.end()) {
+    if (_cycle < stall_it->second) {
+      return false;
+    }
+    _kv_state_stall_until.erase(stall_it);
   }
 
   // B2.3 — request a GTSU rank-mode switch on the PIM channels when we are
@@ -233,6 +293,23 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
       req.planned_draft_length = pick_draft_length(req);
       req.drafted_in_round = 0;
       req.spec_round += 1;
+      auto& trace = round_trace(req.request_id, req.spec_round);
+      trace.planned_draft_length = req.planned_draft_length;
+      trace.entropy = compute_entropy_hint(req);
+      _vskm.begin_round(req.request_id, req.spec_round, req.current_length,
+                        req.planned_draft_length);
+      // F1 — ask SSRC whether this round should be deferred. SSRC reads
+      // the same entropy hint EDC just consumed, so the "low confidence ⇒
+      // defer" test is consistent with the "low confidence ⇒ short k"
+      // test. The decision is per-round; every DRAFT issued inside the
+      // round will be bound to this record via bind_draft_model().
+      if (_ssrc != nullptr && _ssrc->is_enabled()) {
+        const float entropy_hint = compute_entropy_hint(req);
+        if (_ssrc->should_defer_round(req.request_id, req.spec_round,
+                                      req.planned_draft_length, entropy_hint)) {
+          _ssrc_deferred_round[req.request_id] = req.spec_round;
+        }
+      }
       req.spec_phase = LangSpecPhase::DRAFTING;
       [[fallthrough]];
     }
@@ -243,8 +320,13 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
       uint32_t mid = infer_model->get_id();
       _model_meta[mid] = {req.request_id, LangTaskType::DRAFT, "draft",
                           req.planned_draft_length, req.spec_round, _cycle};
+      auto& trace = round_trace(req.request_id, req.spec_round);
+      if (trace.draft_issue_cycle == 0) trace.draft_issue_cycle = _cycle;
       req.running = true;
       _requests_in_model[mid].push_back(req.request_id);
+      // F1 — no per-DRAFT binding needed: MemoryAccess.request_id inherits
+      // from LangRequest.request_id via LanguageModel::get_request_id, so
+      // PIMBackend can look the deferral up directly by that key.
       _model_queue.push(std::move(infer_model));
       return true;
     }
@@ -257,6 +339,7 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
                                   (pv_it->second == req.spec_round);
       if (_ahasd != nullptr && _ahasd->config().enable_tvc &&
           !already_pre_verified) {
+        _ahasd->start_npu_task(_cycle);
         pv_len = _ahasd->decide_pre_verify(req.current_length,
                                            req.planned_draft_length);
       }
@@ -277,6 +360,13 @@ bool SpecDecodeScheduler::try_issue_one_task(LangRequest& req) {
       _model_meta[mid] = {req.request_id, task,
                           _target_attached ? "target" : "single",
                           task_k, req.spec_round, _cycle};
+      auto& trace = round_trace(req.request_id, req.spec_round);
+      if (task == LangTaskType::VERIFY) {
+        trace.verify_issue_cycle = _cycle;
+      } else {
+        trace.preverify_count += 1;
+        trace.preverify_tokens += task_k;
+      }
       req.verify_round_id = req.spec_round;
       req.running = true;
       _requests_in_model[mid].push_back(req.request_id);
@@ -401,6 +491,7 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
         req.key_cache[i]->resize_tensor(new_cache_dim);
         req.value_cache[i]->resize_tensor(new_cache_dim);
       }
+      _vskm.reset_request(req.request_id, req.current_length);
       event.was_generation_phase = false;
       event.generated_tokens = 0;
       event.current_length = req.current_length;
@@ -416,7 +507,16 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
         req.key_cache[i]->resize_tensor(new_cache_dim);
         req.value_cache[i]->resize_tensor(new_cache_dim);
       }
+      _vskm.draft_token(req.request_id);
       req.drafted_in_round += 1;
+      {
+        auto& trace = round_trace(req.request_id, meta.verify_round);
+        trace.draft_tasks_finished += 1;
+        trace.draft_finish_cycle = _cycle;
+      }
+      if (_ahasd != nullptr) {
+        _ahasd->record_draft_tokens_generated(1);
+      }
       event.was_generation_phase = true;
       event.generated_tokens = 1;
       event.current_length = req.current_length;  // not committed yet
@@ -441,11 +541,19 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
       uint32_t k = std::max<uint32_t>(1u, meta.draft_length_at_issue);
       uint32_t accepted = std::min<uint32_t>(
           k, sample_accepted_length(req, k));
+      auto& trace = round_trace(req.request_id, meta.verify_round);
+      trace.accepted_length = accepted;
+      trace.verify_finish_cycle = _cycle;
       event.accepted_length = accepted;
       event.was_generation_phase = true;
       event.generated_tokens = accepted;
+      uint64_t kv_rollback_cycles =
+          _vskm.complete_verify(req.request_id, k, accepted);
       apply_verify_result(req, k, accepted);
       event.current_length = req.current_length;
+      if (kv_rollback_cycles > 0 && req.spec_phase != LangSpecPhase::DONE) {
+        _kv_state_stall_until[req.request_id] = _cycle + kv_rollback_cycles;
+      }
       // B2.3 — feed EDC + TVC the verify outcome.
       if (_ahasd != nullptr) {
         uint64_t verify_cycles = (_cycle > meta.issue_cycle)
@@ -455,11 +563,43 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
                                       std::max<uint64_t>(1, verify_cycles),
                                       req.current_length);
       }
+      // F1 — retire any SSRC-deferred round for this request. Use
+      // meta.verify_round (captured at issue time) in case spec_round has
+      // already advanced for the next round.
+      if (_ssrc != nullptr && _ssrc->is_enabled()) {
+        auto dr_it = _ssrc_deferred_round.find(req.request_id);
+        if (dr_it != _ssrc_deferred_round.end() &&
+            dr_it->second == meta.verify_round) {
+          _ssrc->on_round_verified(req.request_id, meta.verify_round,
+                                   accepted, k);
+          _ssrc_deferred_round.erase(dr_it);
+        }
+      }
       if (req.spec_phase == LangSpecPhase::DONE) {
         _last_rank_mode.erase(req.request_id);
         _pre_verified_in_round.erase(req.request_id);
+        _ssrc_deferred_round.erase(req.request_id);
+        _kv_state_stall_until.erase(req.request_id);
         _active_requests.erase(req.request_id);
       }
+      const uint64_t draft_cycles =
+          (trace.draft_finish_cycle > trace.draft_issue_cycle)
+              ? (trace.draft_finish_cycle - trace.draft_issue_cycle)
+              : 0;
+      const uint64_t verify_span =
+          (trace.verify_finish_cycle > trace.verify_issue_cycle)
+              ? (trace.verify_finish_cycle - trace.verify_issue_cycle)
+              : 0;
+      spdlog::info("[SpecTrace] req={} round={} k={} accepted={} "
+                   "draft_issue={} draft_finish={} verify_issue={} verify_finish={} "
+                   "draft_cycles={} verify_cycles={} draft_tasks={} preverify_count={} "
+                   "preverify_tokens={} entropy={:.4f}",
+                   trace.request_id, trace.spec_round,
+                   trace.planned_draft_length, trace.accepted_length,
+                   trace.draft_issue_cycle, trace.draft_finish_cycle,
+                   trace.verify_issue_cycle, trace.verify_finish_cycle,
+                   draft_cycles, verify_span, trace.draft_tasks_finished,
+                   trace.preverify_count, trace.preverify_tokens, trace.entropy);
       break;
     }
     case LangTaskType::PRE_VERIFY: {
@@ -475,6 +615,7 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
       event.was_generation_phase = true;
       event.generated_tokens = pv_accepted;
       event.current_length = req.current_length;
+      _vskm.pre_verify(req.request_id);
       if (_ahasd != nullptr) {
         uint64_t pv_cycles = (_cycle > meta.issue_cycle)
                                   ? (_cycle - meta.issue_cycle)
@@ -482,7 +623,8 @@ void SpecDecodeScheduler::finish_model(uint32_t model_id) {
         _ahasd->record_pre_verify(std::max<uint64_t>(1, pv_cycles), pv_k);
         _ahasd->record_verify_result(pv_accepted == pv_k, pv_k, pv_accepted,
                                       std::max<uint64_t>(1, pv_cycles),
-                                      req.current_length);
+                                      req.current_length,
+                                      false);
       }
       break;
     }
