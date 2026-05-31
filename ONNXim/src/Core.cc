@@ -265,9 +265,7 @@ void Core::print_stats() {
 }
 
 void Core::print_current_stats() {
-  auto level = spdlog::level::info;
-  if(_id != 0) 
-    level = spdlog::level::debug;
+  auto level = spdlog::level::debug;
     spdlog::log(level,
       "Core [{}] : MatMul active cycle {} Vector active cycle {} ",
       _id, _stat_matmul_cycle, _stat_vec_compute_cycle);
@@ -386,7 +384,8 @@ void Core::handle_ld_inst_queue() {
                               .buffer_id = buffer_id,
                               .request_id = front->request_id,
                               .operand_id = front->operand_id,
-                              .request_identity_tagged = front->request_identity_tagged});
+                              .request_identity_tagged = front->request_identity_tagged,
+                              .spec_task_type = front->spec_task_type});
         if (access->request_identity_tagged) {
           accumulate_request_identity_stats(1, access->size, false);
         }
@@ -427,7 +426,8 @@ void Core::handle_st_inst_queue() {
                               .buffer_id = buffer_id,
                               .request_id = front->request_id,
                               .operand_id = front->operand_id,
-                              .request_identity_tagged = front->request_identity_tagged};
+                              .request_identity_tagged = front->request_identity_tagged,
+                              .spec_task_type = front->spec_task_type};
           if (access->request_identity_tagged) {
             accumulate_request_identity_stats(1, access->size, true);
           }

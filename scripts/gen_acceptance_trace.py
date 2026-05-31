@@ -58,13 +58,14 @@ FAMILY_BUMPS = {
     ("opt", "opt"):     -0.02,
     ("llama2", "llama2"): 0.00,
     ("palm", "palm"):   -0.01,
+    ("qwen3", "qwen3"): 0.00,
     ("opt125m", "opt125mt"): -0.03,
 }
 
 
 def family_key(model_name: str) -> str:
     n = model_name.lower()
-    for fam in ("llama2", "llama3", "palm", "opt"):
+    for fam in ("llama2", "llama3", "qwen3", "palm", "opt"):
         if n.startswith(fam):
             return fam
     return n
@@ -82,7 +83,7 @@ def parse_model_pair(s: str) -> tuple[str, str]:
         return a, b
     # Best-effort split for hyphenated names: grab the shortest prefix
     # that matches a known family and use the rest as the target.
-    known_prefixes = ("opt-", "llama2-", "llama3-", "palm-")
+    known_prefixes = ("opt-", "llama2-", "llama3-", "qwen3-", "palm-")
     for pfx in known_prefixes:
         if s.startswith(pfx):
             # find the second occurrence of a known prefix

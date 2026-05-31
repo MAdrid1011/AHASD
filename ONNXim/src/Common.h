@@ -33,6 +33,11 @@ using json = nlohmann::json;
 typedef uint64_t addr_type;
 typedef uint64_t cycle_type;
 static constexpr uint32_t INVALID_REQUEST_ID = std::numeric_limits<uint32_t>::max();
+static constexpr uint32_t SPEC_TASK_NONE = 0;
+static constexpr uint32_t SPEC_TASK_PROMPT = 1;
+static constexpr uint32_t SPEC_TASK_DRAFT = 2;
+static constexpr uint32_t SPEC_TASK_VERIFY = 3;
+static constexpr uint32_t SPEC_TASK_PRE_VERIFY = 4;
 
 typedef struct {
   uint32_t id;
@@ -49,6 +54,7 @@ typedef struct {
   uint32_t request_id = INVALID_REQUEST_ID;
   uint32_t operand_id = 0;
   bool request_identity_tagged = false;
+  uint32_t spec_task_type = SPEC_TASK_NONE;
 } MemoryAccess;
 
 enum class Opcode {
@@ -89,6 +95,7 @@ typedef struct {
   uint32_t operand_id  = 0;
   uint32_t request_id = INVALID_REQUEST_ID;
   bool request_identity_tagged = false;
+  uint32_t spec_task_type = SPEC_TASK_NONE;
   addr_type base_addr;
 
   uint32_t tile_m;

@@ -1,0 +1,22 @@
+{
+  "_doc": "Edge-envelope AHASD ablation: NPU+PIM task-level async scheduling with adaptive controls and AAU disabled. This is the system-ablation row between NPU-only and +AAU.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "platform_kind": "mobile_npu_pim",
+  "npu_matrix_tops": 16.0,
+  "npu_vector_tops": 8.2,
+  "npu_compute_chips": 2,
+  "enable_ahasd": true,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "max_draft_length": 6,
+  "pim_enable": true,
+  "pim_channel_mask": "",
+  "pim_channel_stride": 2,
+  "pim_clock_mhz": 800,
+  "pim_enable_aau_fusion": false,
+  "pim_aau_fusion_ratio": 0.0,
+  "pim_gtsu_switch_ns": 55,
+  "dram_channels": 2,
+  "dram_freq": 800
+}

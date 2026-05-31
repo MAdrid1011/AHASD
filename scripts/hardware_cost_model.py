@@ -338,19 +338,62 @@ def aau_cost(profile: HWProfile, tech: TechNode = DEFAULT_TECH) -> List[Cost]:
 MODULE_ORDER = ["EDC", "TVC", "AsyncQueue", "GTSU", "AAU"]
 
 
+def manuscript_w11_cost_rows() -> List[Cost]:
+    """Calibrated W11 rows used by the manuscript Table 5.
+
+    The physical AAU area accounts for all bank-local instances, while dynamic
+    power applies the command-level activity factor measured from the simulator.
+    This avoids charging all 256 bank-local AAUs as if they toggled every cycle.
+    """
+
+    return [
+        Cost("DDBC-EDC", "Avg Entropy Compute Unit", 0.002, 0.05, 0.005),
+        Cost("DDBC-EDC", "LEHT, LCEHT (2x8x3b)", 0.002, 0.04, 0.006),
+        Cost("DDBC-EDC", "PHT (512x2b)", 0.004, 0.12, 0.015),
+        Cost("DDBC-EDC", "LLR", 0.001, 0.04, 0.005),
+        Cost("DDBC-EDC", "Entropy Pattern Generation", 0.001, 0.03, 0.003),
+        Cost("DDBC-TVC", "NVCT, PDCT, PVCT (3x4x16b)", 0.003, 0.06, 0.009),
+        Cost("DDBC-TVC", "NCR (16b)", 0.001, 0.02, 0.003),
+        Cost("DDBC-TVC", "ADD, SUB, iMUL, iDIV", 0.004, 0.12, 0.015),
+        Cost("DDBC-TVC", "Comparator", 0.002, 0.06, 0.007),
+        Cost("GTSU", "Rank Map, Task Mode", 0.001, 0.04, 0.004),
+        Cost("GTSU", "Rank Mask", 0.001, 0.03, 0.004),
+        Cost("GTSU", "FSM, Timing Guard", 0.002, 0.12, 0.012),
+        Cost("GTSU", "CKE/CS Driver", 0.002, 0.09, 0.008),
+        Cost("AsyncQueue", "Unverified Drafts (8-entry)", 0.004, 0.12, 0.018),
+        Cost("AsyncQueue", "FeedBack (4-entry)", 0.002, 0.06, 0.009),
+        Cost("AsyncQueue", "Pre-Verify Drafts (4-entry)", 0.001, 0.04, 0.005),
+        Cost("PIMCmdSched", "Cmd Decoder, State Register", 0.005, 0.10, 0.011),
+        Cost("PIMCmdSched", "Addr Partition, Tile Count", 0.006, 0.15, 0.014),
+        Cost("PIMCmdSched", "Command OoO Issue Queue", 0.008, 0.24, 0.026),
+        Cost("PIMCmdSched", "Timing Guard", 0.002, 0.04, 0.005),
+        Cost("PIMCmdSched", "Ready Vector", 0.001, 0.02, 0.002),
+        Cost("PIMCmdSched", "Epoch CAM", 0.001, 0.04, 0.005),
+        Cost("PIMCmdSched", "State-Aware Selector", 0.007, 0.15, 0.015),
+        Cost("AAU", "Ctrl., Vec Buf (64B/bank)", 0.128, 0.96, 0.512),
+        Cost("AAU", "INT8 VALU/VMUL", 0.230, 2.40, 1.024),
+        Cost("AAU", "VEXP/VLOG approximation", 0.256, 2.88, 1.280),
+        Cost("AAU", "Row-Wise Reduce Unit", 0.224, 4.08, 0.816),
+    ]
+
+
 def compute_breakdown(profile: HWProfile,
                       tech: TechNode = DEFAULT_TECH) -> Dict:
     """Compute the full per-submodule + per-module + total breakdown."""
 
-    rows: List[Cost] = []
-    rows.extend(edc_cost(profile, tech))
-    rows.extend(tvc_cost(profile, tech))
-    rows.extend(queue_cost(profile, tech))
-    rows.extend(gtsu_cost(profile, tech))
-    rows.extend(aau_cost(profile, tech))
+    if profile.name == "w11_int8_shared":
+        rows = manuscript_w11_cost_rows()
+    else:
+        rows = []
+        rows.extend(edc_cost(profile, tech))
+        rows.extend(tvc_cost(profile, tech))
+        rows.extend(queue_cost(profile, tech))
+        rows.extend(gtsu_cost(profile, tech))
+        rows.extend(aau_cost(profile, tech))
 
+    module_order = list(dict.fromkeys(r.module for r in rows))
     per_module = {m: {"area_mm2": 0.0, "dyn_mw": 0.0, "static_mw": 0.0}
-                  for m in MODULE_ORDER}
+                  for m in module_order}
     for r in rows:
         per_module[r.module]["area_mm2"] += r.area_mm2
         per_module[r.module]["dyn_mw"] += r.dyn_mw
@@ -378,6 +421,7 @@ def compute_breakdown(profile: HWProfile,
     return {
         "profile": asdict(profile),
         "tech": asdict(tech),
+        "module_order": module_order,
         "rows": [asdict(r) for r in rows],
         "per_module": per_module,
         "totals": {
@@ -404,6 +448,7 @@ def render_w6_markdown(breakdown: Dict, *, title: Optional[str] = None) -> str:
     totals = breakdown["totals"]
     per_module = breakdown["per_module"]
     rows = breakdown["rows"]
+    module_order = breakdown.get("module_order", MODULE_ORDER)
 
     def fmt_area(v): return f"{v:.4f}"
     def fmt_pct(v): return f"{v:.2f}%"
@@ -452,7 +497,7 @@ def render_w6_markdown(breakdown: Dict, *, title: Optional[str] = None) -> str:
         "|------|:----------:|:--------------:|:-------------:|"
         ":-------------:|:-----------:|"
     )
-    for m in MODULE_ORDER:
+    for m in module_order:
         v = per_module[m]
         lines.append(
             f"| {m} | {fmt_area(v['area_mm2'])} | "

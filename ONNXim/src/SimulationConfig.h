@@ -77,6 +77,8 @@ struct SimulationConfig {
   bool enable_edc = true;
   bool enable_tvc = true;
   bool enable_aau = true;
+  bool enable_pim_cmd_sched = false;
+  uint32_t pim_cmd_issue_queue_entries = 16;
   uint32_t max_draft_length = 16;
   /* E1 — W2 sensitivity-sweep hyperparameters. Defaults reproduce the
    * DAC design point (LEHT=8, LLR=3b, H_max=10.0, TVC window=4); any
@@ -87,6 +89,22 @@ struct SimulationConfig {
   uint32_t edc_leht_size         = 8;
   uint32_t edc_llr_bits          = 3;
   uint32_t tvc_cycle_table_size  = 4;
+
+  /* Journal extension — VSKM / KV state-management modeling. Defaults keep
+   * the legacy path in naive async KV mode unless an overlay opts in.
+   */
+  bool enable_vskm = false;
+  std::string kv_management_mode = "naive";
+  uint32_t vskm_version_entries = 16;
+  uint32_t vskm_region_entries = 16;
+  uint32_t vskm_block_tokens = 4;
+  bool vskm_enable_lazy_rollback = true;
+  /* Architectural accounting knob for task-level async speculative state.
+   * The current scheduler still serializes one draft/verify round per request;
+   * this factor lets VSKM account for the virtual number of uncommitted draft
+   * batches present in the async queue when validating Challenge 3.
+   */
+  double vskm_virtual_uncommitted_batches = 1.0;
 
   /* B2.2 — PIM co-simulation (NPU + PIM heterogeneous DRAM).
    *   pim_enable:          master flag; when false Simulator behaves as legacy.

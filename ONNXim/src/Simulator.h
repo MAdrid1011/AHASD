@@ -11,6 +11,7 @@
 #include "CoSimDriver.h"
 #include "EnergyModel.h"
 #include "SSRC.h"
+#include <deque>
 #include <queue>
 #include <tuple>
 
@@ -40,6 +41,18 @@ class Simulator {
   void set_cycle_mask();
   void handle_model();
   uint32_t get_dest_node(MemoryAccess* access);
+  bool is_pim_channel(uint32_t mem_id) const;
+  bool is_tlm_read(const MemoryAccess* access) const;
+  bool is_draft_command(const MemoryAccess* access) const;
+  bool has_tlm_read_candidate(uint32_t mem_id,
+                              const MemoryAccess* selected) const;
+  bool has_draft_command_candidate(uint32_t mem_id,
+                                   const MemoryAccess* selected) const;
+  size_t select_pim_command(uint32_t mem_id) const;
+  void note_pim_command_candidate(uint32_t mem_id, bool has_candidate);
+  void note_pim_command_issued(uint32_t mem_id, const MemoryAccess* access);
+  void note_tlm_read_issue_window(uint32_t mem_id,
+                                  const MemoryAccess* selected);
   SimulationConfig _config;
   uint32_t _n_cores;
   uint32_t _n_memories;
@@ -88,6 +101,10 @@ class Simulator {
   // absorbs at the PIM boundary. Same plumbing as the AAU bypass queue but
   // uses `ssrc_bypass_latency_npu_cycles()` which is tuned independently.
   std::vector<std::queue<std::pair<uint64_t, MemoryAccess*>>> _pim_ssrc_bypass_queues;
+  // Draft-state-aware command issue queue. Enabled only when
+  // enable_pim_cmd_sched=true; otherwise the legacy ICNT->DRAM FIFO path is
+  // preserved.
+  std::vector<std::deque<MemoryAccess*>> _pim_cmd_ooo_queues;
 
   // F1 — SSRC coordinator. Owned by Simulator, attached to both the
   // PIMBackend (for per-request is-deferred lookups) and the
@@ -105,6 +122,16 @@ class Simulator {
   uint64_t _tot_nr_to_core=0;
   uint64_t _tot_nr_from_mem=0;
   uint64_t _tot_nr_to_mem=0;
+  struct PimCommandIssueStats {
+    uint64_t candidate_slots = 0;
+    uint64_t issued_commands = 0;
+    uint64_t tlm_read_attempts = 0;
+    uint64_t tlm_read_blocked = 0;
+    uint64_t tlm_read_attempts_active = 0;
+    uint64_t tlm_read_blocked_active = 0;
+    uint64_t tlm_read_attempts_inactive = 0;
+    uint64_t tlm_read_blocked_inactive = 0;
+  } _pim_cmd_stats;
   cycle_type _icnt_cycle=0;
   uint64_t _icnt_interval=0;
 

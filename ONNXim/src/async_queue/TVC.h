@@ -126,8 +126,7 @@ public:
         total_decisions_++;
         
         // No pre-verification needed if insufficient data or no pending drafts
-        if (nvct_.empty() || pdct_.empty() || pvct_.empty() || 
-            pending_draft_count == 0) {
+        if (nvct_.empty() || pdct_.empty() || pending_draft_count == 0) {
             return {false, 0};
         }
         
@@ -244,4 +243,3 @@ public:
 };
 
 } // namespace AHASD
-

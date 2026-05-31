@@ -16,6 +16,7 @@ __pycache__/
 
 # Results
 results/
+reproducibility/generated/
 *.csv
 *.png
 *.pdf
@@ -38,3 +39,18 @@ results/
 trace*.txt
 
 .metals/
+.cursor/
+/models/
+AHASD-Journal/
+GLASS.md
+Golden-Ratio/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc

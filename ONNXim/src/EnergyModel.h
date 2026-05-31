@@ -60,6 +60,7 @@ struct PIMAggregate {
   uint64_t total_pim_read_bytes    = 0;
   uint64_t total_pim_write_bytes   = 0;
   uint64_t total_aau_fused_events  = 0;
+  uint64_t total_aau_fusion_saved_bytes = 0;
   uint64_t total_gtsu_switches     = 0;
   uint64_t pim_cycle               = 0;
   uint32_t num_pim_channels        = 0;

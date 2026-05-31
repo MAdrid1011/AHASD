@@ -1,0 +1,22 @@
+{
+  "_doc": "Edge-envelope SpecPIM baseline aligned with AHASPro.md Table 2. Two HBM2 channels at 800 MHz emulate the paired 'NPU side 51.2 GB/s LPDDR5 off-chip' + 'PIM-enabled LPDDR5 channel' view implied by Table 2, and pim_channel_stride=2 marks one of them as PIM-enabled. AAU fusion is on because SpecPIM does accelerate attention on PIM; AHASD's adaptive stack (EDC/TVC/GTSU) stays off. Used to replace the previous specpim cell at edge scale.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "platform_kind": "mobile_npu_pim",
+  "npu_matrix_tops": 16.0,
+  "npu_vector_tops": 8.2,
+  "npu_compute_chips": 2,
+  "enable_ahasd": false,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "max_draft_length": 4,
+  "pim_enable": true,
+  "pim_channel_mask": "",
+  "pim_channel_stride": 2,
+  "pim_clock_mhz": 800,
+  "pim_enable_aau_fusion": true,
+  "pim_aau_fusion_ratio": 0.75,
+  "pim_gtsu_switch_ns": 55,
+  "dram_channels": 2,
+  "dram_freq": 800
+}

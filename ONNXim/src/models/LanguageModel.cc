@@ -102,6 +102,25 @@ void LanguageModel::register_operation(std::unique_ptr<Operation> op) {
   _operation_map[op->get_id()] = std::move(op);
 }
 
+void LanguageModel::annotate_spec_task_type() {
+  if (_reqs.empty()) return;
+  const uint32_t request_id = _reqs.size() == 1 ? _reqs[0].request_id
+                                                : INVALID_REQUEST_ID;
+  const uint32_t spec_task_type = _reqs[0].spec_task_type;
+  for (auto& [_, op] : _operation_map) {
+    auto& tiles = op->get_tiles();
+    for (auto& tile : tiles) {
+      for (auto& inst : tile->instructions) {
+        inst->spec_task_type = spec_task_type;
+        if (request_id != INVALID_REQUEST_ID &&
+            inst->request_id == INVALID_REQUEST_ID) {
+          inst->request_id = request_id;
+        }
+      }
+    }
+  }
+}
+
 std::unique_ptr<Tensor> LanguageModel::create_tensor(std::string name, std::vector<uint32_t> dims) {
   return std::make_unique<Tensor>(_root_node_id, name, dims, _config.precision, true);
 }
@@ -349,6 +368,7 @@ void LanguageModel::initialize_model(std::vector<std::unique_ptr<Tensor>>& weigh
       _executable_layer.push_back(val.get());
     }
   }
+  annotate_spec_task_type();
   /* Model initialization time measurement */
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> duration = end - start;

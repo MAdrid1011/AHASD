@@ -1,0 +1,17 @@
+{
+  "_doc": "Edge-envelope GPU-only baseline for the Jetson AGX Orin software path described in the evaluation section. ONNXim does not model CUDA/Tensor-Core scheduling directly, so the executable proxy keeps the committed c4_128x128 topology and uses two 800 MHz 32 B DDR channels as a conservative 102.4 GB/s memory slice. The paper-facing GPU path remains marked as a GPU software proxy, not as a mobile NPU, so fast replay does not apply Mobile-NPU matrix/vector service parallelism to it. PIM and AHASD controls are disabled: drafting and verification alternate on the same GPU memory path.",
+  "_inherits": "_base_systolic_c4_128x128_hbm2.json",
+  "platform_kind": "agx_orin_gpu_proxy",
+  "gpu_memory_bandwidth_gbs": 204.8,
+  "gpu_tensor_cores": 64,
+  "gpu_cuda_cores": 2048,
+  "enable_ahasd": false,
+  "enable_edc": false,
+  "enable_tvc": false,
+  "enable_aau": false,
+  "max_draft_length": 4,
+  "pim_enable": false,
+  "pim_enable_aau_fusion": false,
+  "dram_channels": 2,
+  "dram_freq": 800
+}

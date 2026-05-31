@@ -81,6 +81,7 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
   _pim_hold_queues.resize(_n_memories);
   _pim_bypass_queues.resize(_n_memories);
   _pim_ssrc_bypass_queues.resize(_n_memories);
+  _pim_cmd_ooo_queues.resize(_n_memories);
   if (_cosim->is_active()) {
     spdlog::info("[Simulator] PIM co-sim active; per-channel hold queues sized to {}", _n_memories);
   }
@@ -160,6 +161,98 @@ Simulator::Simulator(SimulationConfig config, bool language_mode)
 void Simulator::run_simulator() {
   spdlog::info("======Start Simulation=====");
   cycle();
+}
+
+bool Simulator::is_pim_channel(uint32_t mem_id) const {
+  return _cosim && _cosim->is_active() && _cosim->pim() &&
+         _cosim->pim()->is_pim_channel(mem_id);
+}
+
+bool Simulator::is_tlm_read(const MemoryAccess* access) const {
+  if (access == nullptr || access->write) return false;
+  return access->spec_task_type == SPEC_TASK_VERIFY ||
+         access->spec_task_type == SPEC_TASK_PRE_VERIFY;
+}
+
+bool Simulator::is_draft_command(const MemoryAccess* access) const {
+  if (access == nullptr) return false;
+  return access->spec_task_type == SPEC_TASK_DRAFT;
+}
+
+bool Simulator::has_tlm_read_candidate(uint32_t mem_id,
+                                       const MemoryAccess* selected) const {
+  if (is_tlm_read(selected)) return true;
+  if (!_pim_hold_queues[mem_id].empty() &&
+      is_tlm_read(_pim_hold_queues[mem_id].front().second)) {
+    return true;
+  }
+  for (const auto* access : _pim_cmd_ooo_queues[mem_id]) {
+    if (is_tlm_read(access)) return true;
+  }
+  return false;
+}
+
+bool Simulator::has_draft_command_candidate(uint32_t mem_id,
+                                            const MemoryAccess* selected) const {
+  if (is_draft_command(selected)) return true;
+  if (!_pim_hold_queues[mem_id].empty() &&
+      is_draft_command(_pim_hold_queues[mem_id].front().second)) {
+    return true;
+  }
+  for (const auto* access : _pim_cmd_ooo_queues[mem_id]) {
+    if (is_draft_command(access)) return true;
+  }
+  return false;
+}
+
+size_t Simulator::select_pim_command(uint32_t mem_id) const {
+  const auto& queue = _pim_cmd_ooo_queues[mem_id];
+  if (queue.empty()) return 0;
+  if (!_config.enable_pim_cmd_sched) return 0;
+
+  for (size_t i = 0; i < queue.size(); i++) {
+    MemoryAccess* access = queue[i];
+    if (is_tlm_read(access) && !_dram->is_full(mem_id, access)) {
+      return i;
+    }
+  }
+  for (size_t i = 0; i < queue.size(); i++) {
+    MemoryAccess* access = queue[i];
+    if (!_dram->is_full(mem_id, access)) {
+      return i;
+    }
+  }
+  for (size_t i = 0; i < queue.size(); i++) {
+    if (is_tlm_read(queue[i])) return i;
+  }
+  return 0;
+}
+
+void Simulator::note_pim_command_candidate(uint32_t mem_id, bool has_candidate) {
+  if (!has_candidate || !is_pim_channel(mem_id)) return;
+  _pim_cmd_stats.candidate_slots++;
+}
+
+void Simulator::note_pim_command_issued(uint32_t mem_id, const MemoryAccess* access) {
+  if (!is_pim_channel(mem_id) || access == nullptr) return;
+  _pim_cmd_stats.issued_commands++;
+}
+
+void Simulator::note_tlm_read_issue_window(uint32_t mem_id,
+                                           const MemoryAccess* selected) {
+  if (!is_pim_channel(mem_id)) return;
+  if (!has_tlm_read_candidate(mem_id, selected)) return;
+  _pim_cmd_stats.tlm_read_attempts++;
+  const bool blocked = selected == nullptr || !is_tlm_read(selected);
+  if (blocked) _pim_cmd_stats.tlm_read_blocked++;
+  const bool draft_active = has_draft_command_candidate(mem_id, selected);
+  if (draft_active) {
+    _pim_cmd_stats.tlm_read_attempts_active++;
+    if (blocked) _pim_cmd_stats.tlm_read_blocked_active++;
+  } else {
+    _pim_cmd_stats.tlm_read_attempts_inactive++;
+    if (blocked) _pim_cmd_stats.tlm_read_blocked_inactive++;
+  }
 }
 
 void Simulator::handle_model() {
@@ -247,21 +340,48 @@ void Simulator::cycle() {
       }
 
       for (int mem_id = 0; mem_id < _n_memories; mem_id++) {
+        const uint32_t mem_node = _n_cores + mem_id;
+        if (is_pim_channel(mem_id)) {
+          const bool has_candidate =
+              !_pim_hold_queues[mem_id].empty() ||
+              !_pim_cmd_ooo_queues[mem_id].empty() ||
+              !_icnt->is_empty(mem_node);
+          note_pim_command_candidate(mem_id, has_candidate);
+        }
         // B2.2 — drain PIM hold queue: any request whose GTSU/TVC stall
         // deadline has expired is now released into the DRAM backend.
         if (_cosim && _cosim->is_active() && !_pim_hold_queues[mem_id].empty()) {
           auto& front = _pim_hold_queues[mem_id].front();
           if (front.first <= _core_cycles && !_dram->is_full(mem_id, front.second)) {
             _dram->push(mem_id, front.second);
+            note_pim_command_issued(mem_id, front.second);
             _pim_hold_queues[mem_id].pop();
             _nr_to_mem++;
             _tot_nr_to_mem++;
           }
         }
         // ICNT to memory
-        if (!_icnt->is_empty(_n_cores + mem_id) &&
-            !_dram->is_full(mem_id, _icnt->top(_n_cores + mem_id))) {
-          MemoryAccess* front = _icnt->top(_n_cores + mem_id);
+        bool incoming_from_ooo = false;
+        size_t incoming_ooo_index = 0;
+        if (is_pim_channel(mem_id)) {
+          auto& ooo_queue = _pim_cmd_ooo_queues[mem_id];
+          while (!_icnt->is_empty(mem_node) &&
+                 ooo_queue.size() < _config.pim_cmd_issue_queue_entries) {
+            ooo_queue.push_back(_icnt->top(mem_node));
+            _icnt->pop(mem_node);
+          }
+        }
+        MemoryAccess* incoming = nullptr;
+        if (is_pim_channel(mem_id) && !_pim_cmd_ooo_queues[mem_id].empty()) {
+          incoming_from_ooo = true;
+          incoming_ooo_index = select_pim_command(mem_id);
+          incoming = _pim_cmd_ooo_queues[mem_id][incoming_ooo_index];
+        } else if (!_icnt->is_empty(mem_node)) {
+          incoming = _icnt->top(mem_node);
+        }
+        note_tlm_read_issue_window(mem_id, incoming);
+        if (incoming != nullptr && !_dram->is_full(mem_id, incoming)) {
+          MemoryAccess* front = incoming;
           // F1 — SSRC bypass: attention-class writes belonging to a
           // currently-deferred draft round never hit DRAM; PIMBackend
           // absorbs them into its on-chip staging buffer and we re-emit a
@@ -281,14 +401,26 @@ void Simulator::cycle() {
             front->request = false;
             _pim_ssrc_bypass_queues[mem_id].push(
                 {_core_cycles + _cosim->ssrc_bypass_latency_npu_cycles(), front});
-            _icnt->pop(_n_cores + mem_id);
+            note_pim_command_issued(mem_id, front);
+            if (incoming_from_ooo) {
+              auto& queue = _pim_cmd_ooo_queues[mem_id];
+              queue.erase(queue.begin() + incoming_ooo_index);
+            } else {
+              _icnt->pop(mem_node);
+            }
             _nr_to_mem++;
             _tot_nr_to_mem++;
           } else if (bypassed) {
             front->request = false;
             _pim_bypass_queues[mem_id].push(
                 {_core_cycles + _cosim->bypass_latency_npu_cycles(), front});
-            _icnt->pop(_n_cores + mem_id);
+            note_pim_command_issued(mem_id, front);
+            if (incoming_from_ooo) {
+              auto& queue = _pim_cmd_ooo_queues[mem_id];
+              queue.erase(queue.begin() + incoming_ooo_index);
+            } else {
+              _icnt->pop(mem_node);
+            }
             _nr_to_mem++;
             _tot_nr_to_mem++;
           } else {
@@ -300,10 +432,16 @@ void Simulator::cycle() {
             }
             if (hold == 0) {
               _dram->push(mem_id, front);
+              note_pim_command_issued(mem_id, front);
             } else {
               _pim_hold_queues[mem_id].push({_core_cycles + hold, front});
             }
-            _icnt->pop(_n_cores + mem_id);
+            if (incoming_from_ooo) {
+              auto& queue = _pim_cmd_ooo_queues[mem_id];
+              queue.erase(queue.begin() + incoming_ooo_index);
+            } else {
+              _icnt->pop(mem_node);
+            }
             _nr_to_mem++;
             _tot_nr_to_mem++;
           }
@@ -313,8 +451,8 @@ void Simulator::cycle() {
         if (_cosim && _cosim->is_active() && !_pim_bypass_queues[mem_id].empty()) {
           auto& bfront = _pim_bypass_queues[mem_id].front();
           if (bfront.first <= _core_cycles &&
-              !_icnt->is_full(_n_cores + mem_id, bfront.second)) {
-            _icnt->push(_n_cores + mem_id, get_dest_node(bfront.second), bfront.second);
+              !_icnt->is_full(mem_node, bfront.second)) {
+            _icnt->push(mem_node, get_dest_node(bfront.second), bfront.second);
             _pim_bypass_queues[mem_id].pop();
             _nr_from_mem++;
             _tot_nr_from_mem++;
@@ -326,8 +464,8 @@ void Simulator::cycle() {
         if (_cosim && _cosim->is_active() && !_pim_ssrc_bypass_queues[mem_id].empty()) {
           auto& sfront = _pim_ssrc_bypass_queues[mem_id].front();
           if (sfront.first <= _core_cycles &&
-              !_icnt->is_full(_n_cores + mem_id, sfront.second)) {
-            _icnt->push(_n_cores + mem_id, get_dest_node(sfront.second), sfront.second);
+              !_icnt->is_full(mem_node, sfront.second)) {
+            _icnt->push(mem_node, get_dest_node(sfront.second), sfront.second);
             _pim_ssrc_bypass_queues[mem_id].pop();
             _nr_from_mem++;
             _tot_nr_from_mem++;
@@ -335,12 +473,12 @@ void Simulator::cycle() {
         }
         // Pop response to ICNT from dram
         if (!_dram->is_empty(mem_id) &&
-            !_icnt->is_full(_n_cores + mem_id, _dram->top(mem_id))) {
+            !_icnt->is_full(mem_node, _dram->top(mem_id))) {
           MemoryAccess* resp = _dram->top(mem_id);
           if (_cosim && _cosim->is_active()) {
             _cosim->on_dram_pop(mem_id, resp, _core_cycles);
           }
-          _icnt->push(_n_cores + mem_id, get_dest_node(resp), resp);
+          _icnt->push(mem_node, get_dest_node(resp), resp);
           _dram->pop(mem_id);
           _nr_from_mem++;
           _tot_nr_from_mem++;
@@ -428,6 +566,44 @@ void Simulator::cycle() {
   if (_cosim) {
     _cosim->print_statistics(_core_cycles);
   }
+  if (_cosim && _cosim->is_active()) {
+    const double pim_issue_rate =
+        _pim_cmd_stats.candidate_slots > 0
+            ? 100.0 * static_cast<double>(_pim_cmd_stats.issued_commands) /
+                  static_cast<double>(_pim_cmd_stats.candidate_slots)
+            : 0.0;
+    const double tlm_blocking_rate =
+        _pim_cmd_stats.tlm_read_attempts > 0
+            ? 100.0 * static_cast<double>(_pim_cmd_stats.tlm_read_blocked) /
+                  static_cast<double>(_pim_cmd_stats.tlm_read_attempts)
+            : 0.0;
+    spdlog::info("[PIMCmd] candidate slots: {} ; issued commands: {} ; issue rate: {:.4f}%",
+                 _pim_cmd_stats.candidate_slots,
+                 _pim_cmd_stats.issued_commands,
+                 pim_issue_rate);
+    spdlog::info("[PIMCmd] TLM read attempts: {} ; blocked: {} ; blocking rate: {:.4f}%",
+                 _pim_cmd_stats.tlm_read_attempts,
+                 _pim_cmd_stats.tlm_read_blocked,
+                 tlm_blocking_rate);
+    const double active_tlm_blocking_rate =
+        _pim_cmd_stats.tlm_read_attempts_active > 0
+            ? 100.0 * static_cast<double>(_pim_cmd_stats.tlm_read_blocked_active) /
+                  static_cast<double>(_pim_cmd_stats.tlm_read_attempts_active)
+            : 0.0;
+    const double inactive_tlm_blocking_rate =
+        _pim_cmd_stats.tlm_read_attempts_inactive > 0
+            ? 100.0 * static_cast<double>(_pim_cmd_stats.tlm_read_blocked_inactive) /
+                  static_cast<double>(_pim_cmd_stats.tlm_read_attempts_inactive)
+            : 0.0;
+    spdlog::info("[PIMCmd] TLM read active-window attempts: {} ; blocked: {} ; blocking rate: {:.4f}%",
+                 _pim_cmd_stats.tlm_read_attempts_active,
+                 _pim_cmd_stats.tlm_read_blocked_active,
+                 active_tlm_blocking_rate);
+    spdlog::info("[PIMCmd] TLM read inactive-window attempts: {} ; blocked: {} ; blocking rate: {:.4f}%",
+                 _pim_cmd_stats.tlm_read_attempts_inactive,
+                 _pim_cmd_stats.tlm_read_blocked_inactive,
+                 inactive_tlm_blocking_rate);
+  }
   // F1 — SSRC coordinator summary. Always printed (even when disabled) so
   // log-parsers can confirm ssrc_enable=0 reproduces bit-identically.
   if (_ssrc) {
@@ -435,9 +611,12 @@ void Simulator::cycle() {
   }
   // B2.5 — synthetic acceptance model summary. Only present in speculative
   // language mode; silent otherwise so legacy runs don't gain noise.
+  uint64_t spec_kv_state_traffic_bytes = 0;
   if (_lang_scheduler && _lang_scheduler->is_speculative()) {
     if (auto* spec = dynamic_cast<SpecDecodeScheduler*>(_lang_scheduler.get())) {
       spec->print_acceptance_stats();
+      spec->print_vskm_stats();
+      spec_kv_state_traffic_bytes = spec->vskm_stats().external_kv_traffic_bytes;
     }
   }
 
@@ -462,6 +641,7 @@ void Simulator::cycle() {
     pim_agg.total_pim_read_bytes   = ps.total_pim_read_bytes;
     pim_agg.total_pim_write_bytes  = ps.total_pim_write_bytes;
     pim_agg.total_aau_fused_events = ps.total_aau_fused_events;
+    pim_agg.total_aau_fusion_saved_bytes = ps.total_aau_fusion_saved_bytes;
     pim_agg.total_gtsu_switches    = ps.total_gtsu_switches;
     pim_agg.pim_cycle              = ps.pim_cycle;
     pim_agg.num_pim_channels       = _cosim->pim()->num_pim_channels();
@@ -471,6 +651,11 @@ void Simulator::cycle() {
   // payload size is `_memory_req_size` bytes.
   bus_agg.total_bytes_npu_to_mem = _tot_nr_to_mem   * _memory_req_size;
   bus_agg.total_bytes_mem_to_npu = _tot_nr_from_mem * _memory_req_size;
+  bus_agg.total_bytes_npu_to_mem += spec_kv_state_traffic_bytes;
+  if (spec_kv_state_traffic_bytes > 0) {
+    spdlog::info("Speculative KV state traffic charged to off-chip bus: {} bytes",
+                 spec_kv_state_traffic_bytes);
+  }
 
   const auto breakdown = _energy_model.compute(core_agg, pim_agg, bus_agg);
   _energy_model.print(breakdown);
@@ -563,6 +748,9 @@ bool Simulator::running() {
       if (!q.empty()) { running = true; break; }
     }
     for (const auto& q : _pim_ssrc_bypass_queues) {
+      if (!q.empty()) { running = true; break; }
+    }
+    for (const auto& q : _pim_cmd_ooo_queues) {
       if (!q.empty()) { running = true; break; }
     }
   }
