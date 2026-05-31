@@ -192,7 +192,7 @@ find . -name "*.h" | grep -E "(EDC|TVC|AAU|Async|Gated)"
 
 ### 3. Experiment Reproducibility
 ```bash
-./scripts/run_ahasd_simulation.sh
+./tools/dev/run_ahasd_simulation.sh
 ```
 **Result**: Automatically generates results for all experiment configurations
 
@@ -244,14 +244,6 @@ scons -j$(nproc)
 ./build/pim_simulator --help
 ```
 
-### Build XiangShan (Optional)
-
-```bash
-cd XiangShan
-make verilog AHASD=1
-make emu AHASD=1
-```
-
 ## 🧪 Running Experiments
 
 ### Quick Test
@@ -260,7 +252,7 @@ make emu AHASD=1
 export ONNXIM_HOME=$(pwd)/ONNXim
 export PIM_SIM_HOME=$(pwd)/PIMSimulator
 
-./scripts/run_single_config.py \
+./tools/dev/run_single_config.py \
     --model llama2-7b:llama2-13b \
     --algorithm adaedl \
     --config ahasd_full \
@@ -273,10 +265,10 @@ cat results/quick_test/metrics.txt
 
 ```bash
 # Run all 60 configurations (24-48 hours)
-./scripts/run_ahasd_simulation.sh
+./tools/dev/run_ahasd_simulation.sh
 
 # Analyze results
-python3 scripts/analyze_ahasd_results.py results/ahasd_*/
+python3 tools/dev/analyze_ahasd_results.py results/ahasd_*/
 ```
 
 ## 📊 Results Analysis
@@ -331,7 +323,7 @@ python3 scripts/analyze_ahasd_results.py results/ahasd_*/
 - [x] AAU module complete
 - [x] Async queues complete
 - [x] Integration layer complete
-- [x] XiangShan integration complete
+- [x] Control-plane replay path complete
 
 ### Hardware Overhead
 - [x] EDC: 0.0002 mm² verified
@@ -340,7 +332,7 @@ python3 scripts/analyze_ahasd_results.py results/ahasd_*/
 - [x] Total: 2.51% < 3% verified
 
 ### Experiment Scripts
-- [x] Use real simulators (not mock data)
+- [x] Use simulator and replay-derived evidence paths
 - [x] Support all configurations
 - [x] Generate correct results format
 - [x] Analysis scripts work
@@ -443,18 +435,15 @@ If you encounter issues:
 - AHASD Paper: See `sample-sigconf.tex`
 - ONNXim: ISCA 2023
 - PIMSimulator: Various Samsung publications
-- XiangShan: MICRO 2022
 
 ### Documentation
 - [ONNXim GitHub](https://github.com/casys-kaist/onnxim)
 - [PIMSimulator GitHub](https://github.com/SAITPublic/PIMSimulator)
-- [XiangShan Docs](https://xiangshan-doc.readthedocs.io/)
 
 ### Tools Used
 - CMake 3.20+
 - Ninja build system
 - Python 3.8+
-- Chisel 3.5+ (for XiangShan)
 
 ## 🎯 Conclusion
 

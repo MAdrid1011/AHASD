@@ -23,12 +23,6 @@ sudo apt-get install -y build-essential cmake ninja-build
 sudo apt-get install -y gcc-10 g++-10
 sudo apt-get install -y python3 python3-pip
 
-# Chisel/Scala (for XiangShan)
-sudo apt-get install -y default-jdk scala
-curl -L https://github.com/com-lihaoyi/mill/releases/download/0.10.0/0.10.0 > mill
-chmod +x mill
-sudo mv mill /usr/local/bin/
-
 # Python dependencies
 pip3 install numpy matplotlib pandas jupyter
 pip3 install onnx onnxruntime torch
@@ -42,7 +36,7 @@ pip3 install onnx onnxruntime torch
 git clone https://github.com/your-org/AHASD.git
 cd AHASD
 
-# Initialize submodules (ONNXim, PIMSimulator, XiangShan)
+# Initialize simulator submodules
 git submodule update --init --recursive
 ```
 
@@ -88,23 +82,7 @@ scons -j$(nproc)
 cd ..
 ```
 
-### Step 4: Build XiangShan (Optional, for full end-to-end testing)
-
-```bash
-cd XiangShan
-
-# Generate Verilog (with AHASD enabled)
-make verilog AHASD=1
-
-# This generates build/XSTop.v with AHASD control modules
-
-# Build emulator
-make emu AHASD=1
-
-cd ..
-```
-
-### Step 5: Download Model Weights
+### Step 4: Download Model Weights
 
 ```bash
 # Create model directory
@@ -151,7 +129,7 @@ Verify environment setup is correct:
 
 ```bash
 # Run quick test with single configuration
-./scripts/run_single_config.py \
+./tools/dev/run_single_config.py \
     --model llama2-7b:llama2-13b \
     --algorithm adaedl \
     --config ahasd_full \
@@ -177,7 +155,7 @@ export ONNXIM_HOME=$(pwd)/ONNXim
 export PIM_SIM_HOME=$(pwd)/PIMSimulator
 
 # Run full experiments (may take 24-48 hours)
-./scripts/run_ahasd_simulation.sh
+./tools/dev/run_ahasd_simulation.sh
 
 # Results will be saved in results/ahasd_YYYYMMDD_HHMMSS/
 ```
@@ -194,12 +172,12 @@ If you have a multi-core CPU, run experiments in parallel:
 
 ```bash
 # Modify script to enable parallel execution
-vim scripts/run_ahasd_simulation.sh
+vim tools/dev/run_ahasd_simulation.sh
 # Change run_simulation function calls to background execution:
 # run_simulation ... &
 
 # Or use GNU Parallel
-parallel -j 8 ./scripts/run_single_config.py ::: \
+parallel -j 8 ./tools/dev/run_single_config.py ::: \
     llama2-7b:llama2-13b \
     opt-1.3b:opt-6.7b \
     palm-8b:palm-62b
@@ -211,7 +189,7 @@ parallel -j 8 ./scripts/run_single_config.py ::: \
 
 ```bash
 # Analyze results and generate paper figures
-python3 scripts/analyze_ahasd_results.py results/ahasd_*/
+python3 tools/dev/analyze_ahasd_results.py results/ahasd_*/
 
 # Outputs:
 # - plots/throughput_comparison.png  (Figure 7a)
@@ -332,7 +310,7 @@ After running experiments, verify the following:
 If you encounter issues:
 
 1. Check `results/*/simulation.log` for detailed error messages
-2. Run diagnostic script: `./scripts/test_e2e.sh`
+2. Run diagnostic script: `./tools/dev/test_e2e.sh`
 3. Review FAQ: `docs/FAQ.md`
 4. Submit Issue: https://github.com/your-org/AHASD/issues
 
@@ -352,8 +330,7 @@ If you use this code, please cite:
 ## 📅 Changelog
 
 - **November 2024**: Initial release
-- **November 2024**: Fixed mock data issue, use real simulator
-- **November 2024**: Added XiangShan integration code
+- **November 2024**: Added simulator-backed experiment flow
 
 ## 🔒 License
 
@@ -363,7 +340,6 @@ This project is licensed under the Apache 2.0 License - see the LICENSE file for
 
 - ONNXim team at KAIST
 - Samsung PIMSimulator team
-- XiangShan team at ICT, CAS
 - Research supported by [Your funding sources]
 
 ## 📧 Contact

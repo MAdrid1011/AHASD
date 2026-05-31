@@ -158,30 +158,20 @@ if (switch_to_preverification) {
 }
 ```
 
-### XiangShan Integration
+### Control-Plane Replay Integration
 
-**New Scala Modules**:
-1. `xiangshan/ahasd/AHASDControl.scala`
-   - CPU-side control logic
-   - Polls EDC/TVC hardware units
-   - Manages queue status
-   - Handles interrupts
+The public reproduction path keeps host-side EDC/TVC and scheduling behavior in
+the trace replay layer. `scripts/run_etcc_trace_replay.py` consumes model JSON,
+baseline JSON, workload traces, and simulator counters, then emits the same
+semantic metrics consumed by `scripts/reproduce_paper_data.py`.
 
-2. `xiangshan/ahasd/AHASDScheduler.scala`
-   - Task scheduling logic
-   - Dispatches tasks to PIM/NPU
-   - Implements EDC-based suppression
-   - Implements TVC-based pre-verification
-
-**Memory Map**:
-| Offset | Register | Access | Description |
-|--------|----------|--------|-------------|
-| 0x00 | CFG_ENABLE | R/W | Enable/disable AHASD |
-| 0x04 | EDC_POLL_INTERVAL | R/W | EDC polling interval (cycles) |
-| 0x08 | TVC_POLL_INTERVAL | R/W | TVC polling interval (cycles) |
-| 0x10 | EDC_DECISION | R | Latest EDC decision |
-| 0x14 | TVC_PREVERIFY_LEN | R | Pre-verification length |
-| 0x18 | QUEUE_STATUS | R | Queue occupancy |
+**Control Inputs**:
+| Input | Source | Description |
+|-------|--------|-------------|
+| Model profile | `ONNXim/models/language_models/*.json` | TLM/DLM sizes and timing proxies |
+| Baseline config | `configs/baselines/*.json` | System and feature flags |
+| Workload trace | `workloads/*.csv` | Request and prompt/decode lengths |
+| Replay counters | simulator/replay output | Accepted tokens, stalls, command issue counts |
 
 ---
 
@@ -325,20 +315,8 @@ Pre-verify State:
 
 ### Software Configuration
 
-**XiangShan Config** (`XiangShan/ahasd_control_config.txt`):
-```ini
-[EDC_Control]
-edc_poll_interval = 100      # CPU cycles
-edc_priority = 2
-
-[TVC_Control]
-tvc_measure_interval = 50    # CPU cycles
-tvc_priority = 3
-
-[Queue_Management]
-queue_poll_interval = 20     # CPU cycles
-overflow_threshold = 56      # entries
-```
+Replay controls are defined by the `ReplayConfig` dataclass in
+`scripts/run_etcc_trace_replay.py` and by the committed baseline JSON files.
 
 ---
 
@@ -388,20 +366,6 @@ scons -j$(nproc)
 ./build/pim_simulator --help
 ```
 
-### Build XiangShan (Optional)
-
-```bash
-cd XiangShan
-
-# Generate Verilog with AHASD
-make verilog AHASD=1
-
-# Build emulator
-make emu AHASD=1
-```
-
----
-
 ## Running Experiments
 
 ### Quick Test (Single Configuration)
@@ -412,7 +376,7 @@ export ONNXIM_HOME=$(pwd)/ONNXim
 export PIM_SIM_HOME=$(pwd)/PIMSimulator
 
 # Run single configuration
-./scripts/run_single_config.py \
+./tools/dev/run_single_config.py \
     --model llama2-7b:llama2-13b \
     --algorithm adaedl \
     --config ahasd_full \
@@ -438,7 +402,7 @@ TVC Success Rate: 91.0%
 # Run all 60 configurations
 # (3 models × 4 algorithms × 5 configs)
 # Estimated time: 24-48 hours
-./scripts/run_ahasd_simulation.sh
+./tools/dev/run_ahasd_simulation.sh
 
 # Results will be in results/ahasd_YYYYMMDD_HHMMSS/
 ```
@@ -447,7 +411,7 @@ TVC Success Rate: 91.0%
 
 ```bash
 # Generate plots and tables
-python3 scripts/analyze_ahasd_results.py results/ahasd_*/
+python3 tools/dev/analyze_ahasd_results.py results/ahasd_*/
 
 # Outputs:
 # - plots/throughput_comparison.png
@@ -475,7 +439,7 @@ python3 scripts/validate_hardware_costs.py
 
 ```bash
 # End-to-end test
-./scripts/test_e2e.sh
+./tools/dev/test_e2e.sh
 
 # Checks:
 # ✓ Simulators build correctly
@@ -543,7 +507,7 @@ export OMP_NUM_THREADS=$(nproc)
 
 ```bash
 # Run multiple configurations in parallel
-parallel -j 4 ./scripts/run_single_config.py ::: \
+parallel -j 4 ./tools/dev/run_single_config.py ::: \
     config1 config2 config3 config4
 ```
 
@@ -579,7 +543,6 @@ parallel -j 4 ./scripts/run_single_config.py ::: \
 
 - [ONNXim Documentation](https://github.com/casys-kaist/onnxim)
 - [PIMSimulator Documentation](https://github.com/SAITPublic/PIMSimulator)
-- [XiangShan Documentation](https://xiangshan-doc.readthedocs.io/)
 - [AHASD Paper](sample-sigconf.tex)
 
 ---

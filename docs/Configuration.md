@@ -194,7 +194,7 @@ configs/ahasd_config_template.json
 Override configuration from command line:
 
 ```bash
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
   --model llama2-7b-llama2-13b \
   --algorithm adaedl \
   --enable-edc \
