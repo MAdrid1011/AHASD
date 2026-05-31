@@ -17,7 +17,7 @@ F3 — SSRC evaluation matrix (pilot)
 
 Example:
 
-    python3 scripts/run_ssrc_sweep.py \\
+    python3 tools/dev/run_ssrc_sweep.py \\
         --out workflow/runs/f2_llr_sweep_opt125m \\
         --model-pair opt-125m:opt-125m-t \\
         --workload-trace workloads/smoke_p4_g8_2req.csv \\
@@ -27,7 +27,7 @@ Example:
 
 F3 pilot (4 algorithm points × 4 thresholds):
 
-    python3 scripts/run_ssrc_sweep.py \\
+    python3 tools/dev/run_ssrc_sweep.py \\
         --out workflow/runs/f3_pilot_opt125m \\
         --model-pair opt-125m:opt-125m-t \\
         --workload-trace workloads/smoke_p4_g8_2req.csv \\
@@ -50,7 +50,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE.parents[1]
+SCRIPTS = REPO / "scripts"
 
 # Pull SSRC-specific counters straight out of the log.txt.  These ride
 # on top of the `run_baseline.py` REGEX wall so the sweep output
@@ -138,7 +139,7 @@ def main() -> int:
                     pass
 
             cmd = [
-                sys.executable, str(HERE / "run_baseline.py"),
+                sys.executable, str(SCRIPTS / "run_baseline.py"),
                 "--baseline", baseline,
                 "--model-pair", args.model_pair,
                 "--workload-trace", str(args.workload_trace),

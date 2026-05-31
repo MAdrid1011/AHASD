@@ -8,7 +8,7 @@ echo "================================"
 echo "AHASD End-to-End Test"
 echo "================================"
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 echo ""
@@ -45,7 +45,7 @@ fi
 
 echo ""
 echo "[5/5] Running quick simulation test..."
-python3 scripts/run_single_config.py \
+python3 tools/dev/run_single_config.py \
     --model llama2-7b-llama2-13b \
     --algorithm adaedl \
     --enable-edc \
@@ -53,7 +53,7 @@ python3 scripts/run_single_config.py \
     --enable-aau \
     --gen-length 128 \
     --output ./test_output \
-    --dry-run >/dev/null 2>&1
+    --ci-smoke-stub >/dev/null 2>&1
 
 if [ -f "test_output/results.json" ]; then
     echo "  ✓ Simulation completed successfully"
@@ -67,4 +67,3 @@ echo ""
 echo "================================"
 echo "✓ All tests passed!"
 echo "================================"
-

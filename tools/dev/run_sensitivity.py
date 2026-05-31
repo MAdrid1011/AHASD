@@ -50,11 +50,12 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE.parents[1]
+SCRIPTS = REPO / "scripts"
 
 # Ensure D3 parser is importable so we can compute utilization.json if
 # the cell didn't go through run_matrix.
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(SCRIPTS))
 from parse_utilization import parse_log as _parse_util_log  # type: ignore
 
 
@@ -82,7 +83,7 @@ def run_cell(args, axis: str, value) -> Dict:
     else:
         out.mkdir(parents=True, exist_ok=True)
         cmd = [
-            sys.executable, str(HERE / "run_baseline.py"),
+            sys.executable, str(SCRIPTS / "run_baseline.py"),
             "--baseline", "ahasd_full",
             "--model-pair", args.model_pair,
             "--workload-trace", str(args.workload_trace),

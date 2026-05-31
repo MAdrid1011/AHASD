@@ -2,7 +2,7 @@
 """E2 driver: emit the W6 unified synthesis table + W11 optimisation comparison.
 
 Usage:
-    scripts/run_synthesis_sweep.py --out workflow/runs/e2
+    tools/dev/run_synthesis_sweep.py --out workflow/runs/e2
 
 Produces, inside ``--out``:
 
@@ -27,10 +27,13 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
-# Import sibling module. scripts/ is not a package, so we rely on run-from-repo.
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO = SCRIPT_DIR.parents[1]
+SCRIPTS = REPO / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
 from hardware_cost_model import (  # noqa: E402
     AAUProfile,

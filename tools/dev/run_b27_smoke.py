@@ -9,7 +9,7 @@ delta comes purely from scheduler + PIM + GTSU. See workflow/PROGRESS.md
 B2.7 entry for the pass criteria.
 
 Usage:
-    scripts/run_b27_smoke.py \
+    tools/dev/run_b27_smoke.py \
         --onnxim /home/madrid/Desktop/AHASD/ONNXim \
         --base-config /tmp/ahasd_b24_smoke/onnxim_config.json \
         --output-dir workflow/b27
@@ -35,7 +35,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE.parents[1]
+SCRIPTS = REPO / "scripts"
 
 
 AXES = {
@@ -104,7 +105,7 @@ def parse_log(text: str) -> Dict[str, float]:
 def prepare_trace(out_dir: Path, seed: int, rounds: int, max_draft: int) -> Path:
     trace_path = out_dir / "accept_trace.csv"
     cmd = [
-        sys.executable, str(HERE / "gen_acceptance_trace.py"),
+        sys.executable, str(SCRIPTS / "gen_acceptance_trace.py"),
         "--model-pair", "opt-125m-opt-125m-t",
         "--algorithm", "specdec",
         "--rounds", str(rounds),

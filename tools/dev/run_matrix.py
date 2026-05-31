@@ -8,7 +8,7 @@ single `matrix.csv` + `matrix.json` under the output directory.
 
 Example:
 
-    scripts/run_matrix.py \\
+    tools/dev/run_matrix.py \\
         --model-pairs opt-125m:opt-125m-t \\
         --algorithms ahasd_none,ahasd_aau,ahasd_aau_edc,ahasd_full \\
         --workload-trace workloads/smoke_p4_g8_2req.csv \\
@@ -40,7 +40,8 @@ from pathlib import Path
 from typing import Dict, List
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE.parents[1]
+SCRIPTS = REPO / "scripts"
 
 # D3/D4 — emit W3 utilization + W9 overlap breakdowns per cell as a
 # free side-effect of running the matrix. Both parsers are pure log
@@ -66,10 +67,41 @@ METRIC_COLUMNS = [
     "total_energy_mj",
     "draft_rounds",
     "verifies",
+    "preverifies",
+    "total_draft_tokens_generated",
+    "total_verified_draft_tokens",
+    "total_rejected_draft_tokens",
+    "rejected_draft_token_ratio",
+    "pim_useful_compute_ratio",
+    "total_preverify_tokens",
     "acceptance_ratio",
     "acceptance_samples",
     "accepted_tokens",
     "accepted_pct",
+    "mean_uncommitted_batches",
+    "peak_uncommitted_batches",
+    "peak_speculative_kv_bytes",
+    "rejected_kv_write_bytes",
+    "total_kv_write_bytes",
+    "rejected_kv_write_ratio",
+    "external_kv_traffic_bytes",
+    "kv_writes_per_accepted_token",
+    "rollback_cycles",
+    "rollback_events",
+    "version_table_lookups",
+    "free_list_reuses",
+    "metadata_updates",
+    "metadata_updates_per_round",
+    "edc_prediction_accuracy",
+    "edc_suppression_rate",
+    "tvc_preverifications_inserted",
+    "tvc_success_rate",
+    "tvc_prevented_npu_idles",
+    "npu_matmul_active_pct",
+    "npu_vector_active_pct",
+    "npu_memory_unit_idle_pct",
+    "npu_core_idle_pct",
+    "pim_aau_fusion_saved_bytes",
 ]
 
 
@@ -87,7 +119,7 @@ def run_cell(args, model_pair: str, algorithm: str) -> Dict:
     out.mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable,
-        str(HERE / "run_baseline.py"),
+        str(SCRIPTS / "run_baseline.py"),
         "--baseline", algorithm,
         "--model-pair", model_pair,
         "--workload-trace", str(args.workload_trace),
@@ -115,6 +147,13 @@ def run_cell(args, model_pair: str, algorithm: str) -> Dict:
         try:
             util = _parse_util_log(log_path)
             util_path.write_text(json.dumps(util, indent=2))
+            pct = util.get("npu_util_pct", {})
+            m["npu_matmul_active_pct"] = pct.get("matmul_active_pct")
+            m["npu_vector_active_pct"] = pct.get("vector_active_pct")
+            m["npu_memory_unit_idle_pct"] = pct.get("memory_unit_idle_pct")
+            m["npu_core_idle_pct"] = pct.get("core_idle_pct")
+            m["pim_aau_fusion_saved_bytes"] = (
+                util.get("pim", {}).get("aau_fusion_saved_bytes"))
         except Exception as exc:  # pragma: no cover - defensive
             print(f"[matrix] WARNING: utilization parse failed for "
                   f"{model_pair} x {algorithm}: {exc}", file=sys.stderr)

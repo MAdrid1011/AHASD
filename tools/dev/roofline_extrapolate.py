@@ -91,7 +91,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 BYTES_PER_PARAM = 2
 
 

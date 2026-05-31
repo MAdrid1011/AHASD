@@ -94,7 +94,7 @@ def parse_args():
     parser.add_argument("--num-pim-ranks", type=int, default=16)
     # B2.3: --ssrc-* CLI flags were removed with the sidecar. F1 will
     # reintroduce them once SSRC has real cycle coupling.
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--ci-smoke-stub", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--enable-trace", action="store_true")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--limit", type=int, default=0, help="Run only the first N jobs")
@@ -107,7 +107,7 @@ def parse_args():
 
 
 def repo_root():
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def default_output_dir(root):
@@ -134,7 +134,7 @@ def run_one(root, args, output_root, model, algorithm, config_name):
     output_dir = output_root / f"{model}_{algorithm}_{config_name}"
     cmd = [
         sys.executable,
-        str(root / "scripts" / "run_single_config.py"),
+        str(root / "tools" / "dev" / "run_single_config.py"),
         "--model",
         model,
         "--algorithm",
@@ -161,8 +161,8 @@ def run_one(root, args, output_root, model, algorithm, config_name):
     # them once SSRC has real cycle coupling.
     if args.enable_trace:
         cmd.append("--enable-trace")
-    if args.dry_run:
-        cmd.append("--dry-run")
+    if args.ci_smoke_stub:
+        cmd.append("--ci-smoke-stub")
 
     log_file = output_dir / "runner.log"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -257,69 +257,69 @@ def make_metric_entry(value, status, source, note):
     }
 
 
-def summarize_contract(runs, hardware, dry_run=False):
-    if dry_run:
-        source = "dry-run wiring check"
+def summarize_contract(runs, hardware, ci_smoke_stub=False):
+    if ci_smoke_stub:
+        source = "CI smoke-stub wiring check"
         return {
             "paper_throughput_speedup_vs_gpu_only_max": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no throughput evidence was measured.",
+                "CI smoke-stub outputs only verify command wiring; no throughput evidence was measured.",
             ),
             "paper_energy_efficiency_speedup_vs_gpu_only_max": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no energy evidence was measured.",
+                "CI smoke-stub outputs only verify command wiring; no energy evidence was measured.",
             ),
             "paper_throughput_speedup_vs_specpim_max": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no SpecPIM comparison was measured.",
+                "CI smoke-stub outputs only verify command wiring; no SpecPIM comparison was measured.",
             ),
             "paper_energy_efficiency_speedup_vs_specpim_avg": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no energy-efficiency evidence was measured.",
+                "CI smoke-stub outputs only verify command wiring; no energy-efficiency evidence was measured.",
             ),
             "paper_final_ablation_throughput_speedup_avg": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no ablation evidence was measured.",
+                "CI smoke-stub outputs only verify command wiring; no ablation evidence was measured.",
             ),
             "paper_final_ablation_energy_efficiency_speedup_avg": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no ablation energy evidence was measured.",
+                "CI smoke-stub outputs only verify command wiring; no ablation energy evidence was measured.",
             ),
             "paper_power_table_throughput_vs_base": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no throughput comparison was measured.",
+                "CI smoke-stub outputs only verify command wiring; no throughput comparison was measured.",
             ),
             "paper_power_table_energy_per_token_vs_base": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; no energy-per-token evidence was measured.",
+                "CI smoke-stub outputs only verify command wiring; no energy-per-token evidence was measured.",
             ),
             "paper_area_overhead_total_percent_text": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; hardware validation was not measured.",
+                "CI smoke-stub outputs only verify command wiring; hardware validation was not measured.",
             ),
             "h100_hardware_area_overhead_percent": make_metric_entry(
                 None,
-                "dry_run",
+                "ci_smoke_stub",
                 source,
-                "Dry-run outputs only verify command wiring; hardware validation was not measured.",
+                "CI smoke-stub outputs only verify command wiring; hardware validation was not measured.",
             ),
         }
 
@@ -409,22 +409,22 @@ def summarize_contract(runs, hardware, dry_run=False):
 
 
 def write_summary_files(output_root, args, runs, hardware):
-    contract_metrics = summarize_contract(runs, hardware, dry_run=args.dry_run)
+    contract_metrics = summarize_contract(runs, hardware, ci_smoke_stub=args.ci_smoke_stub)
     completed = [r for r in runs if r["status"] == "completed" and r["returncode"] == 0]
     failed = [r for r in runs if r not in completed]
-    energy_present = (not args.dry_run) and any(
+    energy_present = (not args.ci_smoke_stub) and any(
         metric(r, "energy_efficiency_tokens_per_mj") is not None
         or metric(r, "energy_mj") is not None
         for r in runs
     )
-    estimated_energy_present = (not args.dry_run) and any(
+    estimated_energy_present = (not args.ci_smoke_stub) and any(
         metric(r, "estimated_energy_mj_from_power_time") is not None
         for r in runs
     )
 
     summary = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
-        "dry_run": args.dry_run,
+        "ci_smoke_stub": args.ci_smoke_stub,
         "generation_length": args.gen_length,
         "prompt_length": args.prompt_length,
         "batch_size": args.batch_size,
@@ -470,7 +470,7 @@ def write_summary_files(output_root, args, runs, hardware):
     md_lines = [
         "# AHASD Contract Evaluation Summary",
         "",
-        f"- Dry run: {args.dry_run}",
+        f"- CI smoke-stub path: {args.ci_smoke_stub}",
         f"- Completed: {len(completed)}/{len(runs)}",
         f"- Energy metrics available: {energy_present}",
         f"- Estimated energy diagnostics available: {estimated_energy_present}",
@@ -481,10 +481,10 @@ def write_summary_files(output_root, args, runs, hardware):
         "| Metric | Status | Value | Note |",
         "|---|---:|---:|---|",
     ]
-    if args.dry_run:
+    if args.ci_smoke_stub:
         md_lines.insert(
             6,
-            "- Evidence note: dry-run metric values are placeholders and are excluded from measured contract metrics.",
+            "- Evidence note: CI smoke-stub values are excluded from measured contract metrics.",
         )
     for key, item in contract_metrics.items():
         value = item["value"]
