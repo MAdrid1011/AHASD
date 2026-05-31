@@ -13,7 +13,7 @@ cd "$PROJECT_ROOT"
 
 echo ""
 echo "[1/5] Validating hardware costs..."
-python3 scripts/validate_hardware_costs.py | grep "✓ Claim VALIDATED"
+python3 scripts/validate_hardware_costs.py | grep "W11 optimised <2% die"
 
 echo ""
 echo "[2/5] Checking ONNXim submodule..."
@@ -35,8 +35,8 @@ fi
 
 echo ""
 echo "[4/5] Validating configuration..."
-if [ -f "configs/ahasd_config_template.json" ]; then
-    python3 -c "import json; json.load(open('configs/ahasd_config_template.json'))"
+if [ -f "configs/baselines/edge_ahasd_full.json" ]; then
+    python3 -c "import json; json.load(open('configs/baselines/edge_ahasd_full.json'))"
     echo "  ✓ Configuration valid"
 else
     echo "  ✗ Configuration missing!"
