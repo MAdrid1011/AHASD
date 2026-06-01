@@ -109,14 +109,14 @@ python3 ../../scripts/generate_transformer_onnx.py \
     --model meta-llama/Llama-2-13b-hf \
     --output llama2-13b
 
-# PaLM models
+# Qwen3 models
 python3 ../../scripts/generate_transformer_onnx.py \
-    --model google/palm-8b \
-    --output palm-8b
+    --model Qwen/Qwen3-8B \
+    --output qwen3-8b
 
 python3 ../../scripts/generate_transformer_onnx.py \
-    --model google/palm-62b \
-    --output palm-62b
+    --model Qwen/Qwen3-32B \
+    --output qwen3-32b
 
 cd ../../..
 ```
@@ -180,7 +180,7 @@ vim tools/dev/run_ahasd_simulation.sh
 parallel -j 8 ./tools/dev/run_single_config.py ::: \
     llama2-7b:llama2-13b \
     opt-1.3b:opt-6.7b \
-    palm-8b:palm-62b
+    qwen3-8b:qwen3-32b
 ```
 
 ## 📊 Results Analysis
@@ -219,7 +219,7 @@ python3 scripts/validate_hardware_costs.py
 |-------------|-----------|------|--------|------------|
 | OPT Small | 3.6× | 3.8× | 4.0× | 4.2× |
 | LLaMA2 Medium | 3.0× | 3.3× | 3.5× | 3.7× |
-| PaLM Large | 2.6× | 2.9× | 3.1× | 3.3× |
+| Qwen3 Large | 2.6× | 2.9× | 3.1× | 3.3× |
 
 ### Energy Efficiency Improvement (vs GPU-only baseline)
 
@@ -227,7 +227,7 @@ python3 scripts/validate_hardware_costs.py
 |-------------|-----------|------|--------|------------|
 | OPT Small | 4.8× | 5.1× | 5.3× | 5.6× |
 | LLaMA2 Medium | 4.1× | 4.4× | 4.7× | 4.9× |
-| PaLM Large | 3.5× | 3.8× | 4.1× | 4.3× |
+| Qwen3 Large | 3.5× | 3.8× | 4.1× | 4.3× |
 
 ### Ablation Study (LLaMA2-7B, AdaEDL)
 
@@ -316,14 +316,17 @@ If you encounter issues:
 
 ## 📄 Citation
 
-If you use this code, please cite:
+This artifact follows the IEEE TPDS manuscript version. Use this repository
+citation until final publication metadata and DOI are assigned:
 
 ```bibtex
-@inproceedings{ahasd2024,
-  title={AHASD: Asynchronous Heterogeneous Architecture for LLM Speculative Decoding on Mobile Devices},
-  author={Your Name et al.},
-  booktitle={Conference Name},
-  year={2024}
+@misc{ahasd_artifact_2026,
+  title={AHASD: An Asynchronous Heterogeneous Architecture for Adaptive
+         Drafting Speculative Decoding of LLMs on Mobile Devices},
+  author={AHASD Contributors},
+  year={2026},
+  note={Artifact for IEEE Transactions on Parallel and Distributed Systems manuscript},
+  url={https://github.com/MAdrid1011/AHASD}
 }
 ```
 

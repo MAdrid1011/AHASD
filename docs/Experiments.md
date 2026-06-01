@@ -40,7 +40,7 @@ Compare with state-of-the-art operator-level parallelism.
 
 ```bash
 # Run comparison with SpecPIM baseline
-for model in opt-1.3b-opt-6.7b llama2-7b-llama2-13b palm-8b-palm-62b; do
+for model in opt-1.3b-opt-6.7b llama2-7b-llama2-13b qwen3-8b-qwen3-32b; do
   for algo in specdec svip adaedl banditspec; do
     # SpecPIM (operator-level sync)
     python3 tools/dev/run_single_config.py \
@@ -156,7 +156,7 @@ python3 tools/dev/run_single_config.py \
 
 # Large Models
 python3 tools/dev/run_single_config.py \
-  --model palm-8b-palm-62b \
+  --model qwen3-8b-qwen3-32b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
   --output ./results/scaling/large

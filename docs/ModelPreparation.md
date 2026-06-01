@@ -10,9 +10,9 @@ AHASD experiments require the following models:
 |---------------|-------------|--------------|------------|
 | Small | OPT-1.3B | OPT-6.7B | ~15GB |
 | Medium | LLaMA2-7B | LLaMA2-13B | ~40GB |
-| Large | PaLM-8B | PaLM-62B | ~150GB |
+| Large | Qwen3-8B | Qwen3-32B | ~80GB |
 
-**Total storage required**: ~200GB
+**Total storage required**: ~135GB, depending on checkpoint format and ONNX export options.
 
 ## 🚀 Quick Start
 
@@ -374,4 +374,3 @@ python3 tools/dev/analyze_ahasd_results.py ./results/
 ---
 
 **Need help?** Check [FAQ](FAQ.md) or file an issue on GitHub.
-

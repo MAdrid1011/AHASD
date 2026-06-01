@@ -123,7 +123,7 @@ AHASD/
 ### Models
 - **Small**: OPT-1.3B → OPT-6.7B
 - **Medium**: LLaMA2-7B → LLaMA2-13B
-- **Large**: PaLM-8B → PaLM-62B
+- **Large**: Qwen3-8B → Qwen3-32B
 
 ### Algorithms
 - SpecDec++, SVIP, AdaEDL, BanditSpec
@@ -137,15 +137,17 @@ AHASD/
 
 ## 📄 Citation
 
-Paper under review. Please cite:
+This artifact follows the IEEE TPDS manuscript version. Use the repository
+citation below until final publication metadata and DOI are assigned.
 
 ```bibtex
-@article{ahasd2024,
-  title={AHASD: Asynchronous Heterogeneous Architecture for 
-         LLM Speculative Decoding on Mobile Devices},
-  author={Anonymous},
-  journal={Under Review},
-  year={2024}
+@misc{ahasd_artifact_2026,
+  title={AHASD: An Asynchronous Heterogeneous Architecture for Adaptive
+         Drafting Speculative Decoding of LLMs on Mobile Devices},
+  author={AHASD Contributors},
+  year={2026},
+  note={Artifact for IEEE Transactions on Parallel and Distributed Systems manuscript},
+  url={https://github.com/MAdrid1011/AHASD}
 }
 ```
 

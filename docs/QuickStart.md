@@ -177,7 +177,7 @@ python3 tools/dev/run_single_config.py \
 
 # Large model
 python3 tools/dev/run_single_config.py \
-  --model palm-8b-palm-62b \
+  --model qwen3-8b-qwen3-32b \
   --algorithm adaedl \
   --enable-edc --enable-tvc --enable-aau \
   --output ./results/large

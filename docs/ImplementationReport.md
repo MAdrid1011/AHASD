@@ -99,7 +99,7 @@ Successfully built a complete simulator platform for the paper *"AHASD: Asynchro
 ### Model Configurations
 - ✅ Small: OPT-1.3B → OPT-6.7B
 - ✅ Medium: LLaMA2-7B → LLaMA2-13B
-- ✅ Large: PaLM-8B → PaLM-62B
+- ✅ Large: Qwen3-8B → Qwen3-32B
 
 ### Adaptive Algorithms
 - ✅ SpecDec++
