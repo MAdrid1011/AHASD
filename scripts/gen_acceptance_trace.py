@@ -83,7 +83,7 @@ def parse_model_pair(s: str) -> tuple[str, str]:
         return a, b
     # Best-effort split for hyphenated names: grab the shortest prefix
     # that matches a known family and use the rest as the target.
-    known_prefixes = ("opt-", "llama2-", "llama3-", "qwen3-", "palm-")
+    known_prefixes = ("opt-", "llama2-", "llama3-", "qwen3-")
     for pfx in known_prefixes:
         if s.startswith(pfx):
             # find the second occurrence of a known prefix

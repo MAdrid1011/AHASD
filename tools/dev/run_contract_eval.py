@@ -18,7 +18,7 @@ MODEL_SETS = {
     "paper": [
         "opt-1.3b-opt-6.7b",
         "llama2-7b-llama2-13b",
-        "palm-8b-palm-62b",
+        "qwen3-8b-qwen3-32b",
     ],
 }
 

@@ -26,7 +26,7 @@ Actual results depend on model size, algorithm, and hardware configuration.
 
 ### Q: Can I use this for my research?
 
-**A**: Yes! The code is open-source. Please cite our work if you use it (paper under review).
+**A**: Yes. The code is open-source. Please cite the IEEE TPDS manuscript artifact entry in the README if you use it.
 
 ---
 
@@ -97,7 +97,7 @@ pip3 install -r requirements.txt
 ### Q: Can I speed up simulations?
 
 **A**: Yes:
-1. Use smaller models (OPT-1.3B vs PaLM-62B)
+1. Use smaller models (OPT-1.3B vs Qwen3-32B)
 2. Reduce generation length (`--gen-length 512`)
 3. Run in parallel on multiple cores
 4. Use the fast-replay release command for full paper-data regeneration
